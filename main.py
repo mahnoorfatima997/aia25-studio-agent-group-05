@@ -3,7 +3,7 @@ from llm_calls import *
 from utils.rag_utils import rag_call
 import json
 
-user_message = "What features should I look for a courtyard in a humid climate?"
+user_message = "How would I design a 100 sqm courtyard in a cold climate?"
 
 ### EXAMPLE 1: Router ###
 # Classify the user message to see if we should answer or not
@@ -25,8 +25,46 @@ else:
     print(attributes)
 
     attributes = attributes.strip()
-    attributes = json.loads(attributes)
-    shape, theme, materials = (attributes[k] for k in ("shape", "theme", "materials"))
+    # Load the JSON file
+    with open("knowledge/merged.json", "r") as file:
+        json_data = json.load(file)
+
+# Convert the JSON data to a string
+    json_data_str = json.dumps(json_data)
+
+# Extract attributes
+    attributes = extract_attributes(brainstorm)
+    print("Raw attributes:", attributes)
+
+# Parse the JSON
+    try:
+        attributes = json.loads(attributes)
+    except json.JSONDecodeError as e:
+        print("JSON decoding error:", e)
+        print("Invalid JSON:", attributes)
+        exit(1)
+
+    print("Parsed attributes:", attributes)
+    
+# Extract the first JSON object if there is extra data
+    import re
+    match = re.search(r'\{.*\}', attributes, re.DOTALL)
+    if match:
+        attributes = match.group(0)
+    else:
+        print("No valid JSON object found in attributes.")
+        exit(1)
+
+# Parse the JSON
+    attributes = attributes.strip()
+    try:
+        attributes = json.loads(attributes)
+    except json.JSONDecodeError as e:
+        print("JSON decoding error:", e)
+        print("Invalid JSON:", attributes)
+        exit(1)
+
+    shape, theme, materials, parameters = (attributes[k] for k in ("shape", "theme", "materials", "parameters"))
 
     ### EXAMPLE 3: Chaining ###
     courtyard_question = create_question(theme)
