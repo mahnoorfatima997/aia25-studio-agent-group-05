@@ -36,6 +36,16 @@ llama3 = [
         }
 ]
 
+mistral = [
+        {
+            "model": "mistral-7b-instruct-v0.2", #change this to point to a new model
+            'api_key': 'any string here is fine',
+            'api_type': 'openai',
+            'base_url': "http://127.0.0.1:1234",
+            "cache_seed": random.randint(0, 100000),
+        }
+]
+
 # This is a cloudflare model
 cloudflare_model = "@hf/nousresearch/hermes-2-pro-mistral-7b"
 

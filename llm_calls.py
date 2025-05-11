@@ -1,11 +1,11 @@
 import json
 from server.config import *
 
-with open("knowledge/merged.json", "r") as file:
-    json_data = json.load(file)
+# with open("knowledge/merged.json", "r") as file:
+#     json_data = json.load(file)
 
-# Convert the JSON data to a string
-json_data_str = json.dumps(json_data)
+# # Convert the JSON data to a string
+# json_data_str = json.dumps(json_data)
 
 def classify_input(message):
     response = client.chat.completions.create(
@@ -15,8 +15,8 @@ def classify_input(message):
                 "role": "system",
                 "content": """
                         Your task is to classify if the user message is related to buildings and architecture or not.
-                        Output only the classification string.
-                        If it is related, output "Related", if not, output "Refuse to answer".
+                        You should NOT try to answer the user message. Your only job is to classify the message
+                        If it is related to architecture, you should output "Related", and if not, output "Refuse to answer".
 
                         # Example #
                         User message: "How do I bake cookies?"
@@ -45,16 +45,15 @@ def generate_concept(message):
                 "role": "system",
                 "content": """
                         You are a visionary intern at a leading architecture firm.
-                        Your task is to craft a short, poetic, and highly imaginative concept for a building design.
-                        Weave the initial information naturally into your idea, letting it inspire creative associations and unexpected imagery.
-                        Your concept should feel bold, evocative, and memorable — like the opening lines of a story.
+                        Your task is to craft a short, very practical, and highly imaginative concept for a building design.
+                        Weave the initial information naturally into your idea, letting it inspire creative associations and applicable solutions.
+                        Expand on where the user can place design objects, how to use the space, and what materials to consider. 
+                        Help the user visualize the design. 
+                        Your concept should be a blend of practicality and imagination, with a focus on the emotional impact of the design.
                         Keep your response to a maximum of one paragraph.
                         Avoid generic descriptions; instead, focus on mood, atmosphere, and emotional resonance. Be a little critical and snarky when you talk.
 
-                        Use the following JSON data as a reference for calculations:
-                        {json_data_str}
-
-                        Based on the user's input and the JSON data, calculate the values for the following parameters:
+                        Based on the user's input, calculate the values for the following parameters:
                         - Social area
                         - Permeable area
                         - Calm area
@@ -100,34 +99,24 @@ def extract_attributes(message):
                         # Instructions #
                         You are a keyword and parameter extraction assistant.
                         Your task is to read a given text and extract relevant keywords and numerical values according to four categories: shape, theme, materials, parameters.
-                        Use the following JSON data as a reference for calculations:
-                        {json_data_str}
-                        Based on the user's input and the JSON data, calculate the values for the following parameters:
-                        - Social area
-                        - Permeable area
-                        - Calm area
-                        - Flower area
+                        Based on the user's input, calculate the values for the following parameters:
+                        - Social area (should always be in square meters)
+                        - Courtyard area (should always be in square meters)
+                        - Tree number and species 
+                        - Scores for health, biodiversity, open space quality, and design integration.
+                        - Permeable area (should always be in square meters)
+                        - Calm area (should always be in square meters)
+                        - Flower area (should always be in square meters)
 
-                        Use the following JSON format for your output:
-                        {
-                            "shape": "keyword1, keyword2",
-                            "theme": "keyword3, keyword4",
-                            "materials": "keyword5, keyword6"
-                            "parameters":{
-                            "courtyard_area": "value1",
-                            "social_area": "value2",
-                            "permeable_area": "value3",
-                            "calm_area": "value4",
-                            "flower_area": "value5"}
-                        }
 
                         # Rules #
-                        If a category has no relevant keywords, write "None" for that field. 
-                        For parameters, extract numerical values and include the unit of measurement (e.g., m², m³, kg).
+                        If a category has no relevant keywords, write "None" for that field.
+                        For parameters, extract numerical values and include the unit of measurement (e.g., m², m³, kg). For numerical values, always extract as a string.
                         Separate multiple keywords in the same field by commas without any additional text.
-                        Do not include explanations, introductions, or any extra information—only output the JSON.
+                        Do not include explanations, introductions, or any extra information. You should only output the JSON.
                         Focus on concise, meaningful keywords and numerical values directly related to the given categories.
                         Do not try to format the json output with characters like ```json
+                        Begin your output with '{' and end with '}' — no extra text or explanations.
 
                         # Category guidelines #
                         Shape: Words that describe form, geometry, structure (e.g., circle, rectangular, twisting, modular).
@@ -139,6 +128,40 @@ def extract_attributes(message):
                         - permeable_area: area of the permeable surfaces in square meters (m²)
                         - calm_area: area of the calm spaces in square meters (m²)
                         - flower_area: area of the flower spaces in square meters (m²)
+                        - tree_number: number of trees
+                        - tree_species: number of different species of trees
+                        - score_health: score for health benefits
+                        - score_biodiversity: score for biodiversity value
+                        - score_open_space: score for open space quality
+                        - score_design_integration: score for design integration
+
+                        # Example #
+                        Input:
+                        We envision an outdoor space with a total plot area of 1,200 sqm, centered around a courtyard of 400 sqm. The design includes 120 sqm of calm areas for relaxation and 180 sqm of social zones for gathering. To enhance environmental quality, the site features 300 sqm of permeable ground and supports 12 trees across three different species (oak, maple, and cherry). Additionally, 80 sqm is allocated for flower beds to boost biodiversity. This design approach scores 8/10 for health benefits, 9/10 for biodiversity value, 7/10 for open space quality, and 8.5/10 for design integration.
+
+The courtyard's focal point is a tranquil water feature, surrounded by lush greenery and comfortable seating areas. The social zones are designed to accommodate various activities, such as outdoor yoga or book clubs, with modular furniture and flexible lighting. Permeable ground and rain gardens help to reduce stormwater runoff and create a natural habitat for local wildlife. The courtyard's perimeter features a living wall, incorporating native plants and vines to provide shade and visual interest.
+
+The design emphasizes the emotional impact of the space by incorporating elements that promote relaxation, socialization, and connection with nature. By balancing functionality with aesthetics, this courtyard becomes an inviting oasis in the heart of the city, perfect for both personal reflection and community engagement.
+
+                        Output:
+                        {
+                        "shape": "circular",
+                        "theme": ["nature", "health"],
+                        "materials": "wood",
+                        "parameters": {
+                            "courtyard_area": "400 sqm",
+                            "social_area": "180 sqm",
+                            "permeable_area": "300 sqm",
+                            "calm_area": "120 sqm",
+                            "flower_area": "80 sqm",
+                            "tree_number": "12",
+                            "tree_species": "3",
+                            "score_health": "8/10",
+                            "score_biodiversity": "9/10",
+                            "score_open_space": "7/10",
+                            "score_design_integration": "8.5/10"
+                        }
+                        }
                         """,
             },
             {
@@ -149,6 +172,46 @@ def extract_attributes(message):
                         """,
             },
         ],
+        response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "attributes",
+                    "description": "Extracted attributes from the text",
+                    "strict": "true",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "shape": {"type": "array", "items": {"type": "string"}},
+                            "theme": {"type": "array", "items": {"type": "string"}},
+                            "materials": {"type": "array", "items": {"type": "string"}},
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "courtyard_area": {"type": "string"},
+                                    "social_area": {"type": "string"},
+                                    "permeable_area": {"type": "string"},
+                                    "calm_area": {"type": "string"},
+                                    "flower_area": {"type": "string"},
+                                    "tree_number": {"type": "integer"},
+                                    "tree_species": {"type": "integer"},
+                                    "score_health": {"type": "number"},
+                                    "score_biodiversity": {"type": "number"},
+                                    "score_open_space": {"type": "number"},
+                                    "score_design_integration": {"type": "number"}
+                                },
+                                "required": [
+                                    "courtyard_area", "social_area", "permeable_area",
+                                    "calm_area", "flower_area", "tree_number",
+                                    "tree_species", "score_health", "score_biodiversity",
+                                    "score_open_space", "score_design_integration"
+                                ]
+                            },
+                            },
+                            "required": ["shape", "theme", "materials", "parameters"]
+                            }
+                }
+            }
+
     )
     return response.choices[0].message.content
 
@@ -190,3 +253,6 @@ def create_question(message):
         ],
     )
     return response.choices[0].message.content
+
+
+

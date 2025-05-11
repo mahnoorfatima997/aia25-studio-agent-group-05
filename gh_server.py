@@ -1,6 +1,8 @@
 from flask import Flask, request, jsonify
 from server.config import *
 from llm_calls import *
+import json
+import re
 
 app = Flask(__name__)
 
@@ -10,9 +12,27 @@ def llm_call():
     data = request.get_json()
     input_string = data.get('input', '')
 
-    answer = classify_input(input_string)
+    classification = classify_input(input_string)
+    print('Classification:', classification)
+    concept = generate_concept(classification)
+    print('Concept: ', concept)
+    # Extract the attributes from the generated concept
+    attributes = extract_attributes(concept)
+    print('Attributes:', attributes)
+    match = re.search(r'\{.*\}', attributes, re.DOTALL)
+    if match:
+        json_string = match.group(0)  # Extract the JSON part
+        try:
+            # Parse the JSON string
+            parsed_json = json.loads(json_string)
+            print("Parsed JSON:", parsed_json)
+        except json.JSONDecodeError as e:
+            print("JSON decoding error:", e)
+    else:
+        print("No valid JSON found in the string.")
 
-    return jsonify({'response': answer})
+    # Update the return statement to include the JSON object
+    return jsonify({'classification': classification, 'attributes': parsed_json})
 
 if __name__ == '__main__':
     app.run(debug=True)
