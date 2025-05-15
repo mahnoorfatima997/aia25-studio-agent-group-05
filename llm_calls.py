@@ -1,11 +1,11 @@
 import json
 from server.config import *
 
-# with open("knowledge/merged.json", "r") as file:
-#     json_data = json.load(file)
+with open("knowledge/merged.json", "r") as file:
+    json_data = json.load(file)
 
 # # Convert the JSON data to a string
-# json_data_str = json.dumps(json_data)
+json_data_str = json.dumps(json_data)
 
 def classify_input(message):
     response = client.chat.completions.create(
@@ -44,14 +44,12 @@ def generate_concept(message):
             {
                 "role": "system",
                 "content": """
-                        You are a visionary intern at a leading architecture firm.
+                        You are a leading landscape architect and designer.
+                        Your task is to generate a concept for a courtyard design based on the user's input.
                         Your task is to craft a short, very practical, and highly imaginative concept for a building design.
-                        Weave the initial information naturally into your idea, letting it inspire creative associations and applicable solutions.
                         Expand on where the user can place design objects, how to use the space, and what materials to consider. 
                         Help the user visualize the design. 
-                        Your concept should be a blend of practicality and imagination, with a focus on the emotional impact of the design.
                         Keep your response to a maximum of one paragraph.
-                        Avoid generic descriptions; instead, focus on mood, atmosphere, and emotional resonance. Be a little critical and snarky when you talk.
 
                         Based on the user's input, calculate the values for the following parameters:
                         - Social area
@@ -64,7 +62,7 @@ def generate_concept(message):
                         Use the following format for your output:
                         "We envision an outdoor space with a total plot area of {'plot_area'} sqm, 
                         centered around a courtyard of {'courtyard_area'} sqm. The design includes 
-                        {'calm_area'} sqm of calm areas for relaxation and {row['out:social_area']} sqm 
+                        {'calm_area'} sqm of calm areas for relaxation and {row['social_area']} sqm 
                         of social zones for gathering. To enhance environmental quality, the site features 
                         {'permeable_area'} sqm of permeable ground and supports {'tree_number'} trees 
                         across {'tree_species'} different species. Additionally, {'flower_area'} sqm 
@@ -73,7 +71,8 @@ def generate_concept(message):
                         {'score_open_space'} for open space quality, and {'score_design_integration'} 
                         for design integration."
 
-                        Ensure that all numerical values are calculated based on the JSON data and user input.
+                        Ensure that all numerical values are calculated based on the JSON data and user input. Do not exceed this one paragraph.
+                        Do not include explanations, introductions, or any extra information.
                         """,
             },
             {
@@ -81,6 +80,72 @@ def generate_concept(message):
                 "content": f"""
                         What are the concepts and parameters behind this courtyard design? 
                         Initial information: {message}
+                        """,
+            },
+        ],
+    )
+    return response.choices[0].message.content
+
+
+def generate_casestudies(message):
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=[
+            {
+                "role": "system",
+                "content": """
+                        Give me a list of 5 case studies related to the following courtyard design.
+                        The case studies should be related to the following topics:
+                        - courtyard design
+                        - courtyard design for children
+                        - courtyard design for elderly
+                        - courtyard design for social interaction
+                        - courtyard design for biodiversity
+                        - courtyard design for health
+                        - courtyard design for open space quality
+                        - courtyard design for design integration
+                        - courtyard design for permeable area
+                        - courtyard design for calm area
+                        - courtyard design for flower area
+                        - courtyard design for tree number and species
+                        - courtyard design for social area
+                        Make sure you give me the case studies in a list format.
+                        Explain only the courtyard design of the case studies in one short paragraph.
+                        """,
+            },
+            {
+                "role": "user",
+                "content": f"""
+                        {message}
+                        """,
+            },
+        ],
+    )
+    return response.choices[0].message.content
+
+def generate_prompt(message):
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=[
+            {
+                "role": "system",
+                "content": """
+                        Depending on the user's input and the results of the previous steps, generate a prompt for an image generation model.
+                        The prompt should be a detailed description of the courtyard design, but limit it to one paragraph. It should not exceed 150 words.
+                        Do not add any extra information or explanations.
+                        Example:
+                        
+                        Input:
+                        We envision an outdoor space with a total plot area of 1,200 sqm, centered around a courtyard of 400 sqm. The design includes 120 sqm of calm areas for relaxation and 180 sqm of social zones for gathering. To enhance environmental quality, the site features 300 sqm of permeable ground and supports 12 trees across three different species (oak, maple, and cherry). Additionally, 80 sqm is allocated for flower beds to boost biodiversity. This design approach scores 8/10 for health benefits, 9/10 for biodiversity value, 7/10 for open space quality, and 8.5/10 for design integration.
+
+                        Output:
+                        A serene courtyard design featuring a 400 sqm central area surrounded by 120 sqm of calm spaces and 180 sqm of social zones. The design incorporates 300 sqm of permeable surfaces, enhancing environmental quality. Twelve trees from three species (oak, maple, cherry) provide shade and biodiversity, while 80 sqm of flower beds add color and attract pollinators. The layout promotes relaxation and social interaction, with modular furniture and flexible lighting. The design scores 8/10 for health benefits, 9/10 for biodiversity value, 7/10 for open space quality, and 8.5/10 for design integration.
+                        """,
+            },
+            {
+                "role": "user",
+                "content": f"""
+                        {message}
                         """,
             },
         ],
@@ -192,8 +257,8 @@ The design emphasizes the emotional impact of the space by incorporating element
                                     "permeable_area": {"type": "string"},
                                     "calm_area": {"type": "string"},
                                     "flower_area": {"type": "string"},
-                                    "tree_number": {"type": "integer"},
-                                    "tree_species": {"type": "integer"},
+                                    "tree_number": {"type": "string"},
+                                    "tree_species": {"type": "string"},
                                     "score_health": {"type": "number"},
                                     "score_biodiversity": {"type": "number"},
                                     "score_open_space": {"type": "number"},
@@ -226,18 +291,16 @@ def create_question(message):
                         # Instruction #
                         You are a thoughtful research assistant specializing in architecture.
                         Your task is to create an open-ended question based on the given text.
-                        Your question should invite an answer that points to references to specific brutalist buildings or notable examples.
                         Imagine the question will be answered using a detailed text about courtyard design and related elements and scores.
                         The question should feel exploratory and intellectually curious.
                         Output only the question, without any extra text.
 
                         # Examples #
-                        - How would I design a 30 sqm courtyard for a hot arid climate while incorporating playful elements for children?
-                        - What’s the best way to design a courtyard that acts as a seasonal gathering space in a high-humidity climate?
-                        - How would I integrate edible landscaping in a courtyard without compromising on formal aesthetics?
-                        - Can I design a courtyard that doubles as a thermal buffer and a public amenity?
-                        - What are passive strategies to cool a courtyard in a subtropical high-density site without relying on trees?
-                        - How do I incorporate shadow play in a courtyard for sensory engagement?
+                        - Is this courtyard design suitable for children, and how does it promote their well-being?
+                        - How does the design of this courtyard contribute to biodiversity and environmental sustainability?
+                        - What are the key elements of this courtyard design that enhance social interaction and community engagement?
+                        - How could the design of this courtyard be improved to better integrate with the surrounding environment?
+                        - What are some critical aspects of this courtyard design that one should be aware of when considering its impact on health and well-being?
 
                         # Important #
                         Keep the question open-ended, inviting multiple references or examples.
