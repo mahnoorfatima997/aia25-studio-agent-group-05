@@ -37,45 +37,45 @@ def classify_input(message):
     return response.choices[0].message.content
 
 
-def generate_concept(message):
-    response = client.chat.completions.create(
-        model=completion_model,
-        messages=[
-            {
-                "role": "system",
-                "content": """
-                        You are a leading landscape architect and designer.
+# def generate_concept(message):
+#     response = client.chat.completions.create(
+#         model=completion_model,
+#         messages=[
+#             {
+#                 "role": "system",
+#                 "content": """
+#                         You are a leading landscape architect and designer.
 
-                        Your task is to generate a **short**, **clear**, and **practical** concept for a courtyard design based on the user's input and the provided attributes.
+#                         Your task is to generate a **short**, **clear**, and **practical** concept for a courtyard design based on the user's input and the provided attributes.
 
-                        Limit your response to **a single paragraph**, **no more than 3 sentences** total. Use concise language.
+#                         Limit your response to **a single paragraph**, **no more than 3 sentences** total. Use concise language.
 
-                        Mention:
-                        - Key spatial strategies
-                        - Suggested materials
-                        - General use of areas
+#                         Mention:
+#                         - Key spatial strategies
+#                         - Suggested materials
+#                         - General use of areas
 
-                        Then, include all relevant spatial areas and performance scores in the following format:
+#                         Then, include all relevant spatial areas and performance scores in the following format:
 
-                        "We envision an outdoor space with a total plot area of {plot_area} sqm, centered around a courtyard of {courtyard_area} sqm. The design includes {area_descriptions}. The site supports {tree_count} trees across {tree_species_count} different species. This design approach scores {score_list}."
+#                         "We envision an outdoor space with a total plot area of {plot_area} sqm, centered around a courtyard of {courtyard_area} sqm. The design includes {area_descriptions}. The site supports {tree_count} trees across {tree_species_count} different species. This design approach scores {score_list}."
 
-                        Where:
-                        - `{area_descriptions}` is a list of all area types (e.g., social, calm, permeable, garden) and their sizes (e.g., "20 sqm of social zones, 15 sqm of calm spaces").
-                        - `{score_list}` includes values for performance metrics such as health, biodiversity, open space quality, and integration (e.g., "8.5 for health benefits, 7.2 for biodiversity").
+#                         Where:
+#                         - `{area_descriptions}` is a list of all area types (e.g., social, calm, permeable, garden) and their sizes (e.g., "20 sqm of social zones, 15 sqm of calm spaces").
+#                         - `{score_list}` includes values for performance metrics such as health, biodiversity, open space quality, and integration (e.g., "8.5 for health benefits, 7.2 for biodiversity").
 
-                        Only use the attributes provided in the JSON. Do not assume or fabricate additional ones. Do not include explanations or extra information.
-                        """,
-            },
-            {
-                "role": "user",
-                "content": f"""
-                        What are the concepts and parameters behind this courtyard design? 
-                        Initial information: {message}
-                        """,
-            },
-        ],
-    )
-    return response.choices[0].message.content
+#                         Only use the attributes provided in the JSON. Do not assume or fabricate additional ones. Do not include explanations or extra information.
+#                         """,
+#             },
+#             {
+#                 "role": "user",
+#                 "content": f"""
+#                         What are the concepts and parameters behind this courtyard design? 
+#                         Initial information: {message}
+#                         """,
+#             },
+#         ],
+#     )
+#     return response.choices[0].message.content
 
 def generate_concept_with_conversation(conversation_messages):
     chat_messages = [
@@ -116,98 +116,6 @@ def generate_concept_with_conversation(conversation_messages):
     )
     return response.choices[0].message.content
 
-def generate_weights(concept=None, user_input=None, conversation_history=None, current_weights=None):
-    
-    if conversation_history is not None and len(conversation_history) > 0:
-        response = client.chat.completions.create(
-        model=completion_model,
-        messages = [
-            {
-                "role": "system",
-                "content": """
-                        Your task is to examine the user prompt and the previous conversation history to generate a matrix that assigns a value between **"1"** (not included) and **"20"** (dominant feature) for each provided area category. Use only the categories present in the input. These values should be scaled based on their relative size or importance in the design.
-
-                        **Format your output exactly like this:**
-
-                        1. The design paragraph.
-                        2. A new line.
-                        3. A JSON object like:
-                        {
-                        "matrix": {
-                        "Category1": "X",
-                        "Category2": "Y",
-                        ...
-                        }
-                        }
-                        Do **not** include any explanation, notes, or extra text — just the matrix.
-                        """,
-            },
-        ] + conversation_history
-        )
-    else:
-        messages = [
-            {
-                "role": "system",
-                "content": """
-                        Your task is to generate a matrix that assigns a value between **"1"** (not included) and **"20"** (dominant feature) for each provided area category. Use only the categories present in the input. These values should be scaled based on their relative size or importance in the design.
-
-                        **Format your output exactly like this:**
-
-                        1. The design paragraph.
-                        2. A new line.
-                        3. A JSON object like:
-                        {
-                        "matrix": {
-                        "Category1": "X",
-                        "Category2": "Y",
-                        ...
-                        }
-                        }
-                        Do **not** include any explanation, notes, or extra text — just the matrix.
-                        """,
-            },
-                        {
-                "role": "user",
-                "content": f"""
-                        Initial information: {concept}
-                        """,
-            },
-        ]
-    
-    return response.choices[0].message.content
-    
-    # response = client.chat.completions.create(
-    #     model=completion_model,
-    #     messages=[
-    #         {
-    #             "role": "system",
-    #             "content": """
-    #                     generate a matrix that assigns a value between **"1"** (not included) and **"20"** (dominant feature) for each provided area category. Use only the categories present in the input. These values should be scaled based on their relative size or importance in the design.
-
-    #                     **Format your output exactly like this:**
-
-    #                     1. The design paragraph.
-    #                     2. A new line.
-    #                     3. A JSON object like:
-    #                     {
-    #                     "matrix": {
-    #                     "Category1": "X",
-    #                     "Category2": "Y",
-    #                     ...
-    #                     }
-    #                     }
-    #                     Do **not** include any explanation, notes, or extra text — just the matrix.
-    #                     """,
-    #         },
-    #         {
-    #             "role": "user",
-    #             "content": f"""
-    #                     Initial information: {concept}
-    #                     """,
-    #         },
-    #     ],
-    # )
-    # return response.choices[0].message.content
 
 def extract_weights_with_conversation(conversation_messages):
     chat_messages = [
@@ -256,43 +164,6 @@ def extract_weights_with_conversation(conversation_messages):
     )
     return response.choices[0].message.content
 
-
-def generate_locations(message):
-    response = client.chat.completions.create(
-        model=completion_model,
-        messages=[
-            {
-                "role": "system",
-                "content": """
-
-                            Your task is to determine the placement of each functional zone on a 20 by 20 grid courtyard, based on the user's design intent and the relative importance (weights) of each zone.
-
-                            The grid is defined with X and Y axes:
-                            - X ranges from 0 to 19 (left to right)
-                            - Y ranges from 0 to 19 (bottom to top)
-
-                            You will be given a list of functional zones, along with their relative weights. Use these to decide appropriate placements. Zones with higher weights should be placed in more central, accessible, or prominent positions as inferred from the prompt.
-
-                            Your output must use this **exact format**:
-                            {
-                        "locations": {
-                        "Function1": [X, Y],
-                        "Function2": [X, Y],
-                        ...
-                        }
-                        }
-                        Only include the functions provided in the input. Each `[X, Y]` should be a pair of integers between 0 and 19. Do not include explanations or commentary. Only output the JSON object in the format shown above.
-                        """
-                                    },
-                                    {
-                                        "role": "user",
-                                        "content": f"""
-                        Based on this courtyard design: {message}
-                        """
-            },
-        ],
-    )
-    return response.choices[0].message.content
 
 def extract_locations_with_conversation(conversation_messages):
     chat_messages = [
