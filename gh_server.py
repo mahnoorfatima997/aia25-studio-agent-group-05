@@ -203,11 +203,10 @@ app = Flask(__name__)
 @app.route('/llm_call/generate_concept', methods=['POST'])
 def llm_call_generate_concept():
     data = request.get_json()
-    user_input = data.get('input', '')
-    print("Received user input:", user_input)
-
+    concept_conversation = data.get('conversation')
+    print("Received user input:", concept_conversation)
     
-    generated_concept = generate_concept(user_input)
+    generated_concept = generate_concept_with_conversation(concept_conversation)
     return jsonify({
         "concept": generated_concept
     })
@@ -215,9 +214,9 @@ def llm_call_generate_concept():
 @app.route('/llm_call/extract_attributes', methods=['POST'])
 def llm_call_extract_attributes():
     data = request.get_json()
-    concept = data.get('concept', '')
-    print("Received concept:", concept)
-    attributes = extract_attributes(concept)
+    attributes_conversation = data.get('conversation')
+    attributes = extract_attributes_with_conversation(attributes_conversation)
+    print("Received attributes:", attributes)
     try:
         attributes_json = json.loads(attributes)
     except json.JSONDecodeError as e:
@@ -227,22 +226,27 @@ def llm_call_extract_attributes():
         "attributes": attributes_json
     })
 
+@app.route('/llm_call/generate_weights', methods=['POST'])
+def llm_call_generate_weights():
+    data = request.get_json()
+    weights_conversation = data.get('conversation')
+    weights = extract_weights_with_conversation(weights_conversation)
+    print("Received weights:", weights)
+    try:
+        weights_json = json.loads(weights)
+    except json.JSONDecodeError as e:
+        print(f"Failed to parse attributes JSON: {e}")
+        weights_json = {}
+    return jsonify({
+        "weights": weights_json
+    })
+
 @app.route('/llm_call/generate_locations', methods=['POST'])
 def llm_call_generate_locations():
     data = request.get_json()
-    concept = data.get('concept', '')
-    user_input = data.get('user_input', '')
-
-    
-    current_locations = data.get('current_locations', '')
-    current_weights = data.get('current_weights', '')
-
-
-    locations = generate_locations(concept, user_input=user_input, current_locations=current_locations)
-    print("Received locations:", locations)
-    weights = generate_weights(concept, user_input=user_input, current_weights=current_weights)
-    print("Received weights:", weights)
-
+    locations_conversation = data.get('conversation')
+    locations = extract_locations_with_conversation(locations_conversation)
+        # Parse locations JSON
     locations_match = re.search(r'\{.*\}', locations, re.DOTALL)
     if locations_match:
         try:
@@ -251,23 +255,75 @@ def llm_call_generate_locations():
             print(f"Could not parse locations JSON: {e}")
             locations_json = {}
     else:
-        print("No valid JSON found in locations.")
         locations_json = {}
-
-    weights_match = re.search(r'\{.*\}', weights, re.DOTALL)
-    if weights_match:
-        try:
-            weights_json = json.loads(weights_match.group(0))
-        except Exception as e:
-            print(f"Could not parse weights JSON: {e}")
-            weights_json = {}
-    else:
-        print("No valid JSON found in weights.")
-        weights_json = {}
+    print("Received locations:", locations)
+    # try:
+    #     locations_json = json.loads(locations)
+    # except json.JSONDecodeError as e:
+    #     print(f"Failed to parse attributes JSON: {e}")
+    #     locations_json = {}
     return jsonify({
-        "locations": locations_json,
-        "weights": weights_json
+        "locations": locations_json
     })
+
+
+# @app.route('/llm_call/generate_locations', methods=['POST'])
+# def llm_call_generate_locations():
+#     data = request.get_json()
+#     concept = data.get('concept', '')
+#     user_input = data.get('user_input', '')
+    
+#     # Get conversation history from request
+#     conversation_history = data.get('conversation_history', [])
+#     current_locations = data.get('current_locations', {})
+#     current_weights = data.get('current_weights', {})
+    
+#     # Add current user input to conversation history
+#     if user_input:
+#         conversation_history.append({"role": "user", "content": user_input})
+    
+#     # Generate locations with full context
+#     locations = generate_locations(
+#         concept, 
+#         user_input=user_input,
+#         conversation_history=conversation_history,
+#         current_locations=current_locations
+#     )
+    
+#     weights = generate_weights(
+#         concept,
+#         user_input=user_input,
+#         conversation_history=conversation_history,
+#         current_weights=current_weights
+#     )
+
+#     # Parse locations JSON
+#     locations_match = re.search(r'\{.*\}', locations, re.DOTALL)
+#     if locations_match:
+#         try:
+#             locations_json = json.loads(locations_match.group(0))
+#         except Exception as e:
+#             print(f"Could not parse locations JSON: {e}")
+#             locations_json = {}
+#     else:
+#         locations_json = {}
+
+#     # Parse weights JSON
+#     weights_match = re.search(r'\{.*\}', weights, re.DOTALL)
+#     if weights_match:
+#         try:
+#             weights_json = json.loads(weights_match.group(0))
+#         except Exception as e:
+#             print(f"Could not parse weights JSON: {e}")
+#             weights_json = {}
+#     else:
+#         weights_json = {}
+
+#     return jsonify({
+#         "locations": locations_json,
+#         "weights": weights_json,
+#         "conversation_history": conversation_history
+#     })
 
 # @app.route('/llm_call', methods=['POST'])
 # def llm_call():

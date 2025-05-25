@@ -77,14 +77,55 @@ def generate_concept(message):
     )
     return response.choices[0].message.content
 
-def generate_weights(message):
-    response = client.chat.completions.create(
-        model=completion_model,
-        messages=[
+def generate_concept_with_conversation(conversation_messages):
+    chat_messages = [
             {
                 "role": "system",
                 "content": """
-                        generate a matrix that assigns a value between **"1"** (not included) and **"20"** (dominant feature) for each provided area category. Use only the categories present in the input. These values should be scaled based on their relative size or importance in the design.
+                        You are a leading landscape architect and designer.
+
+                        Your task is to generate a **short**, **clear**, and **practical** concept for a courtyard design based on the user's input and the provided attributes.
+
+                        Limit your response to **a single paragraph**, **no more than 3 sentences** total. Use concise language.
+
+                        Mention:
+                        - Key spatial strategies
+                        - Suggested materials
+                        - General use of areas
+
+                        Then, include all relevant spatial areas and performance scores in the following format:
+
+                        "We envision an outdoor space with a total plot area of {plot_area} sqm, centered around a courtyard of {courtyard_area} sqm. The design includes {area_descriptions}. The site supports {tree_count} trees across {tree_species_count} different species. This design approach scores {score_list}."
+
+                        Where:
+                        - `{area_descriptions}` is a list of all area types (e.g., social, calm, permeable, garden) and their sizes (e.g., "20 sqm of social zones, 15 sqm of calm spaces").
+                        - `{score_list}` includes values for performance metrics such as health, biodiversity, open space quality, and integration (e.g., "8.5 for health benefits, 7.2 for biodiversity").
+
+                        Only use the attributes provided in the JSON. Do not assume or fabricate additional ones. Do not include explanations or extra information.
+                        """,
+            },
+        ]
+    chat_messages.extend(conversation_messages)
+    
+    print(type(chat_messages)) # Debugging line')
+    print("Generating concept with conversation history...")
+    print("Conversation messages:", chat_messages)
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=chat_messages
+    )
+    return response.choices[0].message.content
+
+def generate_weights(concept=None, user_input=None, conversation_history=None, current_weights=None):
+    
+    if conversation_history is not None and len(conversation_history) > 0:
+        response = client.chat.completions.create(
+        model=completion_model,
+        messages = [
+            {
+                "role": "system",
+                "content": """
+                        Your task is to examine the user prompt and the previous conversation history to generate a matrix that assigns a value between **"1"** (not included) and **"20"** (dominant feature) for each provided area category. Use only the categories present in the input. These values should be scaled based on their relative size or importance in the design.
 
                         **Format your output exactly like this:**
 
@@ -101,15 +142,120 @@ def generate_weights(message):
                         Do **not** include any explanation, notes, or extra text — just the matrix.
                         """,
             },
+        ] + conversation_history
+        )
+    else:
+        messages = [
             {
-                "role": "user",
-                "content": f"""
-                        Initial information: {message}
+                "role": "system",
+                "content": """
+                        Your task is to generate a matrix that assigns a value between **"1"** (not included) and **"20"** (dominant feature) for each provided area category. Use only the categories present in the input. These values should be scaled based on their relative size or importance in the design.
+
+                        **Format your output exactly like this:**
+
+                        1. The design paragraph.
+                        2. A new line.
+                        3. A JSON object like:
+                        {
+                        "matrix": {
+                        "Category1": "X",
+                        "Category2": "Y",
+                        ...
+                        }
+                        }
+                        Do **not** include any explanation, notes, or extra text — just the matrix.
                         """,
             },
-        ],
+                        {
+                "role": "user",
+                "content": f"""
+                        Initial information: {concept}
+                        """,
+            },
+        ]
+    
+    return response.choices[0].message.content
+    
+    # response = client.chat.completions.create(
+    #     model=completion_model,
+    #     messages=[
+    #         {
+    #             "role": "system",
+    #             "content": """
+    #                     generate a matrix that assigns a value between **"1"** (not included) and **"20"** (dominant feature) for each provided area category. Use only the categories present in the input. These values should be scaled based on their relative size or importance in the design.
+
+    #                     **Format your output exactly like this:**
+
+    #                     1. The design paragraph.
+    #                     2. A new line.
+    #                     3. A JSON object like:
+    #                     {
+    #                     "matrix": {
+    #                     "Category1": "X",
+    #                     "Category2": "Y",
+    #                     ...
+    #                     }
+    #                     }
+    #                     Do **not** include any explanation, notes, or extra text — just the matrix.
+    #                     """,
+    #         },
+    #         {
+    #             "role": "user",
+    #             "content": f"""
+    #                     Initial information: {concept}
+    #                     """,
+    #         },
+    #     ],
+    # )
+    # return response.choices[0].message.content
+
+def extract_weights_with_conversation(conversation_messages):
+    chat_messages = [
+            {
+                "role": "system",
+                "content": """
+
+                        Your task is to examine the user prompt, attributes and the previous conversation history to generate a list of area categories with their relative weights. Assign a value between **"1"** (not included) and **"20"** (dominant feature) for each provided area category. Use only the categories based on the text. These values should be scaled based on their relative size or importance in the design.
+
+                        **Format your output exactly like this:**
+
+                        # Example Output:
+                        {
+                        "calm area": "5",
+                        "playground": "12",
+                        "social area": "8",
+                        "permeable ground": "15",
+                        }
+                        
+                        Do **not** include any explanation, notes, or extra text — just the json.
+
+                        """,
+            },
+        ]
+    chat_messages.extend(conversation_messages)
+    print("Extracting weights with conversation history...")
+    print("Conversation messages:", chat_messages)
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=chat_messages,
+        response_format=
+                {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "attributes",
+                        "description": "Extracted design-related attributes from the text",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
     )
     return response.choices[0].message.content
+
 
 def generate_locations(message):
     response = client.chat.completions.create(
@@ -145,6 +291,135 @@ def generate_locations(message):
                         """
             },
         ],
+    )
+    return response.choices[0].message.content
+
+def extract_locations_with_conversation(conversation_messages):
+    chat_messages = [
+            {
+                "role": "system",
+                "content": """
+
+                        Your task is to determine the placement of each functional zone on a 20 by 20 grid courtyard, based on the user's design intent and the relative importance (weights) of each zone.
+
+                        The grid is defined with X and Y axes:
+                        - X ranges from 0 to 19 (left to right)
+                        - Y ranges from 0 to 19 (bottom to top)
+
+                        You will be given a list of functional zones, along with their relative weights. Use these to decide appropriate placements. Zones with higher weights should be placed in more central, accessible, or prominent positions as inferred from the prompt.
+
+                        Your output must use this **exact format**:
+                        {
+                        "Function1": [X, Y],
+                        "Function2": [X, Y],
+                        ...
+                        }
+                        Only include the functions provided in the input. Each `[X, Y]` should be a pair of integers between 0 and 19. 
+                        
+                        Do **not** include any explanation, notes, or extra text — just the json.
+
+                        """,
+            },
+        ]
+    chat_messages.extend(conversation_messages)
+    print("Extracting locations with conversation history...")
+    print("Conversation messages:", chat_messages)
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=chat_messages,
+    )
+    return response.choices[0].message.content
+
+
+def extract_connections_with_conversation(conversation_messages):
+    chat_messages = [
+            {
+                "role": "system",
+                "content": """
+
+                You are assisting in the spatial design of a courtyard.
+
+                The user has already provided a design concept and a set of extracted spatial attributes earlier in this conversation. From those inputs, your task is to:
+
+                Identify the relevant functional zones mentioned in the concept and attributes.
+
+                Build a list of these functional zones in the order they are inferred from the inputs.
+
+                Determine which zones should be connected or adjacent, based on:
+
+                1. Design intent (from the concept)
+                2. Functional needs or compatibility (from the attributes)
+                3. General principles of spatial planning (e.g., gathering zones may connect to social zones, calm areas may avoid noisy zones)
+
+                You are not placing zones spatially. You are only identifying logical adjacency relationships.
+
+                Output Instructions:
+                Output only a JSON array of index pairs, where each pair [a, b] means the zone at index a should connect to the zone at index b.
+
+                The order of the list should match the inferred zone list from step 1.
+
+                Do not include any explanation, text, or metadata — just the final result in the format below:
+
+                **Example Output:**
+                {
+                [[0, 2], [1, 3], [4, 5]]
+                }
+                        """,
+            },
+        ]
+    chat_messages.extend(conversation_messages)
+    print("Extracting locations with conversation history...")
+    print("Conversation messages:", chat_messages)
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=chat_messages,
+    )
+    return response.choices[0].message.content
+
+def extract_targets_with_conversation(conversation_messages):
+    chat_messages = [
+            {
+                "role": "system",
+                "content": """
+
+                You are assisting in the spatial design of a courtyard.
+
+                The user has already provided a design concept, extracted spatial attributes, and a list of functional zones with inferred adjacency relationships earlier in this conversation. The courtyard is divided into discrete numbered cells.
+
+                From this information, your task is to:
+
+                Assign each functional zone from the list to a specific cell number in the courtyard based on:
+
+                1. Spatial logic from the adjacency relationships (e.g., adjacent zones should be placed in neighboring or strategically close cells)
+                2. Design intent (from the concept)
+                3. Environmental considerations (e.g., calm zones oriented to shaded or enclosed areas; active zones to open or sunny areas)
+                4. General spatial planning principles (e.g., entries near entrances, buffers between conflicting functions)
+
+                Important Notes:
+
+                1. You are not generating geometry or visual layout.
+                2. You are assigning zone indices to cell numbers based on the best spatial fit inferred from context and adjacency.
+                3. You may assume the courtyard cell numbers are provided in a numbered grid and you have freedom to assign any zone to any cell.
+                4. Each zone index should be mapped to a single unique cell number.
+
+                Output Instructions:
+                Output only a JSON array of index-cell pairs, where each pair [a, b] means the zone at index a should be placed at cell b in the courtyard.
+
+                Do not include any explanation, text, or metadata — just the final result in the format below:
+
+                **Example Output:**
+                {
+                [[0, 2], [1, 3], [4, 5]]
+                }
+                        """,
+            },
+        ]
+    chat_messages.extend(conversation_messages)
+    print("Extracting locations with conversation history...")
+    print("Conversation messages:", chat_messages)
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=chat_messages,
     )
     return response.choices[0].message.content
 
@@ -222,81 +497,201 @@ def generate_prompt(message):
     return response.choices[0].message.content
 
 
-def extract_attributes(message):
-    response = client.chat.completions.create(
-        model=completion_model,
-        messages=[
+# def extract_attributes(message):
+#     response = client.chat.completions.create(
+#         model=completion_model,
+#         messages=[
+#             {
+#                 "role": "system",
+#                 "content": """
+
+#                         You are a keyword and parameter extraction assistant.
+
+#                         Your task is to read a given concept description and extract specific attributes according to the categories below. Focus only on **vegetation and material-related elements**.
+
+#                         # Categories #
+#                         1. **Tree species**: List all mentioned species or write "None" if not specified.
+#                         2. **Tree number**: Extract as a string (e.g., "12").
+#                         3. **Flower types**: List the flower types mentioned or write "None".
+#                         4. **Materials**: List only physical materials used in the design (e.g., wood, steel, brick, glass). Use lowercase. Separate multiple materials with commas.
+
+#                         # Rules #
+#                         - If an attribute is not mentioned, write `"None"` for that field.
+#                         - Do not generate new values; only extract from the input.
+#                         - Only output the JSON — no explanations, extra text, or formatting characters.
+#                         - Begin your output with `{` and end with `}`.
+#                         - Use lowercase for all items in "materials" and "flower_types".
+#                         - Separate multiple items in lists with commas (no bullet points or line breaks).
+#                         - Always include all four fields in the output, even if some are "None".
+
+#                         # Example Output #
+#                         {
+#                         "tree_species": "oak,maple,cherry",
+#                         "tree_number": "12",
+#                         "flower_types": "lavender,daffodil",
+#                         "materials": "wood,concrete"
+#                         }
+#                         """,
+#             },
+#             {
+#                 "role": "user",
+#                 "content": f"""
+#                         # GIVEN TEXT # 
+#                         {message}
+#                         """,
+#             },
+#         ],
+#         response_format=
+#                 {
+#                 "type": "json_schema",
+#                 "json_schema": {
+#                     "name": "attributes",
+#                     "description": "Extracted vegetation and material attributes from the text",
+#                     "strict": "true",
+#                     "schema": {
+#                     "type": "object",
+#                     "properties": {
+#                         "tree_species": {
+#                         "type": "array",
+#                         "items": { "type": "string" }
+#                         },
+#                         "tree_number": {
+#                         "type": "string"
+#                         },
+#                         "flower_types": {
+#                         "type": "array",
+#                         "items": { "type": "string" }
+#                         },
+#                         "materials": {
+#                         "type": "array",
+#                         "items": { "type": "string" }
+#                         }
+#                     },
+#                     "required": ["tree_species", "tree_number", "flower_types", "materials"]
+#                     }
+#                 }
+#                 }
+
+#     )
+#     return response.choices[0].message.content
+
+def extract_attributes_with_conversation(conversation_messages):
+    chat_messages = [
             {
                 "role": "system",
                 "content": """
 
                         You are a keyword and parameter extraction assistant.
 
-                        Your task is to read a given concept description and extract specific attributes according to the categories below. Focus only on **vegetation and material-related elements**.
+                        Your task is to read a given design concept description and extract all specific design-related attributes as key–value pairs.
 
-                        # Categories #
-                        1. **Tree species**: List all mentioned species or write "None" if not specified.
-                        2. **Tree number**: Extract as a string (e.g., "12").
-                        3. **Flower types**: List the flower types mentioned or write "None".
-                        4. **Materials**: List only physical materials used in the design (e.g., wood, steel, brick, glass). Use lowercase. Separate multiple materials with commas.
+                        # Instructions:
+                        - Each key must be a **concise, lowercase design parameter** (e.g., "tree species", "bench count", "materials", "path width").
+                        - Each value must be **directly lifted or inferred verbatim** from the input (no assumptions or guesses).
+                        - Use lowercase for keys and string values unless the original text uses capitalized proper nouns (e.g., “Japanese maple”).
+                        - Output in a single flat JSON object.
+                        - Include all **quantities, types, dimensions, uses, species, materials, and named spaces** mentioned in the description.
+                        - If multiple values are present, separate them with commas as a single string (e.g., "lavender,daffodil").
 
-                        # Rules #
-                        - If an attribute is not mentioned, write `"None"` for that field.
-                        - Do not generate new values; only extract from the input.
+                        # Output Format:
                         - Only output the JSON — no explanations, extra text, or formatting characters.
                         - Begin your output with `{` and end with `}`.
-                        - Use lowercase for all items in "materials" and "flower_types".
-                        - Separate multiple items in lists with commas (no bullet points or line breaks).
-                        - Always include all four fields in the output, even if some are "None".
 
-                        # Example Output #
+                        # Example Output:
                         {
-                        "tree_species": "oak,maple,cherry",
-                        "tree_number": "12",
-                        "flower_types": "lavender,daffodil",
-                        "materials": "wood,concrete"
+                        "tree species": "oak,maple",
+                        "tree count": "12",
+                        "flower types": "lavender,daffodil",
+                        "materials": "brick,wood",
+                        "bench count": "4",
+                        "path width": "2 meters",
+                        "courtyard area": "35 sqm"
                         }
+
                         """,
             },
-            {
-                "role": "user",
-                "content": f"""
-                        # GIVEN TEXT # 
-                        {message}
-                        """,
-            },
-        ],
+        ]
+    chat_messages.extend(conversation_messages)
+    print("Extracting attributes with conversation history...")
+    print("Conversation messages:", chat_messages)
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=chat_messages,
         response_format=
                 {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "attributes",
-                    "description": "Extracted vegetation and material attributes from the text",
-                    "strict": "true",
-                    "schema": {
-                    "type": "object",
-                    "properties": {
-                        "tree_species": {
-                        "type": "array",
-                        "items": { "type": "string" }
-                        },
-                        "tree_number": {
-                        "type": "string"
-                        },
-                        "flower_types": {
-                        "type": "array",
-                        "items": { "type": "string" }
-                        },
-                        "materials": {
-                        "type": "array",
-                        "items": { "type": "string" }
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "attributes",
+                        "description": "Extracted design-related attributes from the text",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
-                    },
-                    "required": ["tree_species", "tree_number", "flower_types", "materials"]
                     }
                 }
-                }
+    )
+    return response.choices[0].message.content
 
+def extract_spaces_with_conversation(conversation_messages):
+    chat_messages = [
+            {
+                "role": "system",
+                "content": """
+
+                        You are a spatial functions extraction assistant.
+
+                        Your task is to read a given design concept description and extract all specific possible spaces as key–value pairs.
+
+                        # Instructions:
+                        - Each key must be a **concise, lowercase design parameter** (e.g., "tree species", "bench count", "materials", "path width").
+                        - Each value must be **directly lifted or inferred verbatim** from the input (no assumptions or guesses).
+                        - Use lowercase for keys and string values unless the original text uses capitalized proper nouns (e.g., “Japanese maple”).
+                        - Output in a single flat JSON object.
+                        - Include all **quantities, types, dimensions, uses, species, materials, and named spaces** mentioned in the description.
+                        - If multiple values are present, separate them with commas as a single string (e.g., "lavender,daffodil").
+
+                        # Output Format:
+                        - Only output the JSON — no explanations, extra text, or formatting characters.
+                        - Begin your output with `{` and end with `}`.
+
+                        # Example Output:
+                        {
+                        "tree species": "oak,maple",
+                        "tree count": "12",
+                        "flower types": "lavender,daffodil",
+                        "materials": "brick,wood",
+                        "bench count": "4",
+                        "path width": "2 meters",
+                        "courtyard area": "35 sqm"
+                        }
+
+                        """,
+            },
+        ]
+    chat_messages.extend(conversation_messages)
+    print("Extracting attributes with conversation history...")
+    print("Conversation messages:", chat_messages)
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=chat_messages,
+        response_format=
+                {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "attributes",
+                        "description": "Extracted design-related attributes from the text",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
     )
     return response.choices[0].message.content
 
