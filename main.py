@@ -3,120 +3,81 @@ from llm_calls import *
 from utils.rag_utils import rag_call
 import json
 import requests
+import re
 
-user_message = "How would I design a 100 sqm courtyard in a cold climate?"
+user_message = input("Describe your courtyard design: ")
 
-# URL of the Flask server
-url = 'http://localhost:5000/llm_call'
-
-# Send the user message to the server
-payload = {'input': user_message}
-response = requests.post(url, json=payload)
-
-if response.status_code == 200:
-    data = response.json()
-    print("✅ Response from server:")
-    print(json.dumps(data, indent=4))
-else:
-    print("❌ Failed to connect or server error:", response.status_code)
-
-### EXAMPLE 1: Router ###
-# Classify the user message to see if we should answer or not
+# Step 1: Router
 router_output = classify_input(user_message)
 if router_output == "Refuse to answer":
-    llm_answer = "Sorry, I can only answer questions about architecture."
+    print("Sorry, I can only answer questions about architecture.")
+    exit()
 
-else:
-    print(router_output)
-    ### EXAMPLE 2: Simple call ###
-    # simple call to LLM, try different sys prompt flavours
-    brainstorm = generate_concept(user_message)
-    print(brainstorm)
+# Step 2: Concept
+brainstorm = generate_concept(user_message)
+print("\nConcept generated:\n", brainstorm)
+input("Press Enter to continue to attribute extraction...")
 
-    casestudies = generate_casestudies(user_message)
-    print(casestudies)
-
-    imageprompt = generate_prompt(user_message)
-    print(imageprompt)
-
-    ### EXAMPLE 4: Structured Output ###
-    # extract the architecture attributes from the user
-    # parse a structured output with regex
-    attributes = extract_attributes(brainstorm)
-    print(attributes)
-
-        # Send to the server via test request
-    payload = {'input': attributes}
-
-    # The URL of the Flask server endpoint
-    url = 'http://localhost:5000/llm_call'  
-
-    # Send the request to your local server
-    response = requests.post(url, json=payload)
-
-    # Check if the server responded successfully
-    if response.status_code == 200:
-        data = response.json()
-        attributes_from_server = data['attributes']
-        print("Attributes from server:", attributes_from_server)
-
-        # Proceed with your next steps (parsing, using the attributes, etc.)
-        try:
-            shape, theme, materials, parameters = (
-                attributes_from_server[k] for k in ("shape", "theme", "materials", "parameters")
-            )
-        except KeyError as e:
-            print(f"Error: Missing attribute - {e}")
-            exit(1)
-
-    attributes = attributes.strip()
-    # Load the JSON file
-    with open("knowledge/merged.json", "r") as file:
-        json_data = json.load(file)
-
-# Convert the JSON data to a string
-    json_data_str = json.dumps(json_data)
-
-# Extract attributes
-    attributes = extract_attributes(brainstorm)
-    # print("Raw attributes:", attributes)
-
-# Parse the JSON
+# Step 3: Attributes
+attributes = extract_attributes(brainstorm)
+print("\nExtracted attributes (raw):\n", attributes)
+# Try to parse JSON
+try:
+    attributes_json = json.loads(attributes)
+    print("Parsed attributes (JSON):\n", json.dumps(attributes_json, indent=2))
+except Exception as e:
+    print("Could not parse attributes as JSON:", e)
+    attributes_json = None
+user_mod = input("Modify attributes (paste JSON) or press Enter to continue: ")
+if user_mod.strip():
     try:
-        attributes = json.loads(attributes)
-    except json.JSONDecodeError as e:
-        print("JSON decoding error:", e)
-        print("Invalid JSON:", attributes)
-        exit(1)
+        attributes_json = json.loads(user_mod)
+        print("Using user-modified attributes (JSON):\n", json.dumps(attributes_json, indent=2))
+    except Exception as e:
+        print("Could not parse user-modified attributes as JSON:", e)
 
-    # print("Parsed attributes:", attributes)
-    
-# Extract the first JSON object if there is extra data
-#     import re
-#     match = re.search(r'\{.*\}', attributes, re.DOTALL)
-#     if match:
-#         attributes = match.group(0)
-#     else:
-#         print("No valid JSON object found in attributes.")
-#         exit(1)
+# Step 4: Weights
+weights = generate_weights(user_message)
+print("\nGenerated weights (raw):\n", weights)
+# Try to extract JSON from weights
+match = re.search(r'\{.*\}', weights, re.DOTALL)
+if match:
+    try:
+        weights_json = json.loads(match.group(0))
+        print("Parsed weights (JSON):\n", json.dumps(weights_json, indent=2))
+    except Exception as e:
+        print("Could not parse weights as JSON:", e)
+        weights_json = None
+else:
+    print("No JSON found in weights output.")
+    weights_json = None
+input("Press Enter to continue to locations...")
 
-# # Parse the JSON
-#     attributes = attributes.strip()
-#     try:
-#         attributes = json.loads(attributes)
-#     except json.JSONDecodeError as e:
-#         print("JSON decoding error:", e)
-#         print("Invalid JSON:", attributes)
-#         exit(1)
+# Step 5: Locations
+locations = generate_locations(user_message)
+print("\nGenerated locations (raw):\n", locations)
+match = re.search(r'\{.*\}', locations, re.DOTALL)
+if match:
+    try:
+        locations_json = json.loads(match.group(0))
+        print("Parsed locations (JSON):\n", json.dumps(locations_json, indent=2))
+    except Exception as e:
+        print("Could not parse locations as JSON:", e)
+        locations_json = None
+else:
+    print("No JSON found in locations output.")
+    locations_json = None
+input("Press Enter to continue to question generation...")
 
-    shape, theme, materials, parameters = (attributes[k] for k in ("shape", "theme", "materials", "parameters"))
+# Step 6: Question and RAG
+context_info = f"User input: {user_message}\n" \
+              f"Concept: {brainstorm}\n" \
+              f"Attributes: {attributes}\n" \
+              f"Weights: {weights}\n" \
+              f"Locations: {locations}\n"
+courtyard_question = create_question(context_info)
+print("\nGenerated question for RAG:\n", courtyard_question)
+input("Press Enter to get RAG results...")
 
-    ### EXAMPLE 3: Chaining ###
-    courtyard_question = create_question(theme)
-    print(courtyard_question)
-    # call llm with the output of a previous call
-
-    ### EXAMPLE 5: RAG ####
-    # Get a response based on the knowledge found
-    rag_result= rag_call(courtyard_question, embeddings = "knowledge/merged.json", n_results = 10)
-    print(rag_result)
+rag_result = rag_call(courtyard_question, embeddings="knowledge/merged.json", n_results=10)
+print("\nRAG result:\n", rag_result)

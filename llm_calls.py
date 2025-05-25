@@ -45,34 +45,25 @@ def generate_concept(message):
                 "role": "system",
                 "content": """
                         You are a leading landscape architect and designer.
-                        Your task is to generate a concept for a courtyard design based on the user's input.
-                        Your task is to craft a short, very practical, and highly imaginative concept for a building design.
-                        Expand on where the user can place design objects, how to use the space, and what materials to consider. 
-                        Help the user visualize the design. 
-                        Keep your response to a maximum of one paragraph.
 
-                        Based on the user's input, calculate the values for the following parameters:
-                        - Social area
-                        - Permeable area
-                        - Calm area
-                        - Flower area
-                        - Tree number and species
-                        - Scores for health, biodiversity, open space quality, and design integration.
+                        Your task is to generate a **short**, **clear**, and **practical** concept for a courtyard design based on the user's input and the provided attributes.
 
-                        Use the following format for your output:
-                        "We envision an outdoor space with a total plot area of {'plot_area'} sqm, 
-                        centered around a courtyard of {'courtyard_area'} sqm. The design includes 
-                        {'calm_area'} sqm of calm areas for relaxation and {row['social_area']} sqm 
-                        of social zones for gathering. To enhance environmental quality, the site features 
-                        {'permeable_area'} sqm of permeable ground and supports {'tree_number'} trees 
-                        across {'tree_species'} different species. Additionally, {'flower_area'} sqm 
-                        is allocated for flower beds to boost biodiversity. This design approach scores {'score_health'} 
-                        for health benefits, {'score_biodiversity'} for biodiversity value, 
-                        {'score_open_space'} for open space quality, and {'score_design_integration'} 
-                        for design integration."
+                        Limit your response to **a single paragraph**, **no more than 3 sentences** total. Use concise language.
 
-                        Ensure that all numerical values are calculated based on the JSON data and user input. Do not exceed this one paragraph.
-                        Do not include explanations, introductions, or any extra information.
+                        Mention:
+                        - Key spatial strategies
+                        - Suggested materials
+                        - General use of areas
+
+                        Then, include all relevant spatial areas and performance scores in the following format:
+
+                        "We envision an outdoor space with a total plot area of {plot_area} sqm, centered around a courtyard of {courtyard_area} sqm. The design includes {area_descriptions}. The site supports {tree_count} trees across {tree_species_count} different species. This design approach scores {score_list}."
+
+                        Where:
+                        - `{area_descriptions}` is a list of all area types (e.g., social, calm, permeable, garden) and their sizes (e.g., "20 sqm of social zones, 15 sqm of calm spaces").
+                        - `{score_list}` includes values for performance metrics such as health, biodiversity, open space quality, and integration (e.g., "8.5 for health benefits, 7.2 for biodiversity").
+
+                        Only use the attributes provided in the JSON. Do not assume or fabricate additional ones. Do not include explanations or extra information.
                         """,
             },
             {
@@ -86,6 +77,77 @@ def generate_concept(message):
     )
     return response.choices[0].message.content
 
+def generate_weights(message):
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=[
+            {
+                "role": "system",
+                "content": """
+                        generate a matrix that assigns a value between **"1"** (not included) and **"20"** (dominant feature) for each provided area category. Use only the categories present in the input. These values should be scaled based on their relative size or importance in the design.
+
+                        **Format your output exactly like this:**
+
+                        1. The design paragraph.
+                        2. A new line.
+                        3. A JSON object like:
+                        {
+                        "matrix": {
+                        "Category1": "X",
+                        "Category2": "Y",
+                        ...
+                        }
+                        }
+                        Do **not** include any explanation, notes, or extra text — just the matrix.
+                        """,
+            },
+            {
+                "role": "user",
+                "content": f"""
+                        Initial information: {message}
+                        """,
+            },
+        ],
+    )
+    return response.choices[0].message.content
+
+def generate_locations(message):
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=[
+            {
+                "role": "system",
+                "content": """
+
+                            Your task is to determine the placement of each functional zone on a 20 by 20 grid courtyard, based on the user's design intent and the relative importance (weights) of each zone.
+
+                            The grid is defined with X and Y axes:
+                            - X ranges from 0 to 19 (left to right)
+                            - Y ranges from 0 to 19 (bottom to top)
+
+                            You will be given a list of functional zones, along with their relative weights. Use these to decide appropriate placements. Zones with higher weights should be placed in more central, accessible, or prominent positions as inferred from the prompt.
+
+                            Your output must use this **exact format**:
+                            {
+                        "locations": {
+                        "Function1": [X, Y],
+                        "Function2": [X, Y],
+                        ...
+                        }
+                        }
+                        Only include the functions provided in the input. Each `[X, Y]` should be a pair of integers between 0 and 19. Do not include explanations or commentary. Only output the JSON object in the format shown above.
+                        """
+                                    },
+                                    {
+                                        "role": "user",
+                                        "content": f"""
+                        Based on this courtyard design: {message}
+                        """
+            },
+        ],
+    )
+    return response.choices[0].message.content
+
 
 def generate_casestudies(message):
     response = client.chat.completions.create(
@@ -94,23 +156,29 @@ def generate_casestudies(message):
             {
                 "role": "system",
                 "content": """
-                        Give me a list of 5 case studies related to the following courtyard design.
-                        The case studies should be related to the following topics:
-                        - courtyard design
-                        - courtyard design for children
-                        - courtyard design for elderly
-                        - courtyard design for social interaction
-                        - courtyard design for biodiversity
-                        - courtyard design for health
-                        - courtyard design for open space quality
-                        - courtyard design for design integration
-                        - courtyard design for permeable area
-                        - courtyard design for calm area
-                        - courtyard design for flower area
-                        - courtyard design for tree number and species
-                        - courtyard design for social area
-                        Make sure you give me the case studies in a list format.
-                        Explain only the courtyard design of the case studies in one short paragraph.
+                        Based on the user's courtyard design intent, identify one or two case studies that are most relevant.
+
+                        The case studies must relate specifically to the courtyard’s key goals and features, such as:
+                        - Social interaction
+                        - Child-friendly design
+                        - Elderly comfort
+                        - Biodiversity
+                        - Health and well-being
+                        - Calm or quiet zones
+                        - Flower planting
+                        - Tree placement and species diversity
+                        - Open space quality
+                        - Permeability
+                        - Design integration
+
+                        Only select case studies that closely match the user’s priorities and spatial strategies.
+
+                        For each case study, provide:
+                        - The name and location
+                        - A **short paragraph** describing the courtyard design and why it is relevant
+
+                        Respond with no more than two case studies. Do not include explanations or general commentary outside the case study descriptions.
+
                         """,
             },
             {
@@ -122,6 +190,7 @@ def generate_casestudies(message):
         ],
     )
     return response.choices[0].message.content
+
 
 def generate_prompt(message):
     response = client.chat.completions.create(
@@ -161,71 +230,31 @@ def extract_attributes(message):
                 "role": "system",
                 "content": """
 
-                        # Instructions #
                         You are a keyword and parameter extraction assistant.
-                        Your task is to read a given text and extract relevant keywords and numerical values according to four categories: shape, theme, materials, parameters.
-                        Based on the user's input, calculate the values for the following parameters:
-                        - Social area (should always be in square meters)
-                        - Courtyard area (should always be in square meters)
-                        - Tree number and species 
-                        - Scores for health, biodiversity, open space quality, and design integration.
-                        - Permeable area (should always be in square meters)
-                        - Calm area (should always be in square meters)
-                        - Flower area (should always be in square meters)
 
+                        Your task is to read a given concept description and extract specific attributes according to the categories below. Focus only on **vegetation and material-related elements**.
+
+                        # Categories #
+                        1. **Tree species**: List all mentioned species or write "None" if not specified.
+                        2. **Tree number**: Extract as a string (e.g., "12").
+                        3. **Flower types**: List the flower types mentioned or write "None".
+                        4. **Materials**: List only physical materials used in the design (e.g., wood, steel, brick, glass). Use lowercase. Separate multiple materials with commas.
 
                         # Rules #
-                        If a category has no relevant keywords, write "None" for that field.
-                        For parameters, extract numerical values and include the unit of measurement (e.g., m², m³, kg). For numerical values, always extract as a string.
-                        Separate multiple keywords in the same field by commas without any additional text.
-                        Do not include explanations, introductions, or any extra information. You should only output the JSON.
-                        Focus on concise, meaningful keywords and numerical values directly related to the given categories.
-                        Do not try to format the json output with characters like ```json
-                        Begin your output with '{' and end with '}' — no extra text or explanations.
+                        - If an attribute is not mentioned, write `"None"` for that field.
+                        - Do not generate new values; only extract from the input.
+                        - Only output the JSON — no explanations, extra text, or formatting characters.
+                        - Begin your output with `{` and end with `}`.
+                        - Use lowercase for all items in "materials" and "flower_types".
+                        - Separate multiple items in lists with commas (no bullet points or line breaks).
+                        - Always include all four fields in the output, even if some are "None".
 
-                        # Category guidelines #
-                        Shape: Words that describe form, geometry, structure (e.g., circle, rectangular, twisting, modular).
-                        Theme: Words related to the overall idea, feeling, or concept (e.g., minimalism, nature, industrial, cozy).
-                        Materials: Specific physical materials mentioned (e.g., wood, concrete, glass, steel).
-                        Parameters: Specific numerical values with units related to the building's design such as:
-                        - courtyard_area: area of the courtyard in square meters (m²)
-                        - social_area: area of the social spaces in square meters (m²)
-                        - permeable_area: area of the permeable surfaces in square meters (m²)
-                        - calm_area: area of the calm spaces in square meters (m²)
-                        - flower_area: area of the flower spaces in square meters (m²)
-                        - tree_number: number of trees
-                        - tree_species: number of different species of trees
-                        - score_health: score for health benefits
-                        - score_biodiversity: score for biodiversity value
-                        - score_open_space: score for open space quality
-                        - score_design_integration: score for design integration
-
-                        # Example #
-                        Input:
-                        We envision an outdoor space with a total plot area of 1,200 sqm, centered around a courtyard of 400 sqm. The design includes 120 sqm of calm areas for relaxation and 180 sqm of social zones for gathering. To enhance environmental quality, the site features 300 sqm of permeable ground and supports 12 trees across three different species (oak, maple, and cherry). Additionally, 80 sqm is allocated for flower beds to boost biodiversity. This design approach scores 8/10 for health benefits, 9/10 for biodiversity value, 7/10 for open space quality, and 8.5/10 for design integration.
-
-The courtyard's focal point is a tranquil water feature, surrounded by lush greenery and comfortable seating areas. The social zones are designed to accommodate various activities, such as outdoor yoga or book clubs, with modular furniture and flexible lighting. Permeable ground and rain gardens help to reduce stormwater runoff and create a natural habitat for local wildlife. The courtyard's perimeter features a living wall, incorporating native plants and vines to provide shade and visual interest.
-
-The design emphasizes the emotional impact of the space by incorporating elements that promote relaxation, socialization, and connection with nature. By balancing functionality with aesthetics, this courtyard becomes an inviting oasis in the heart of the city, perfect for both personal reflection and community engagement.
-
-                        Output:
+                        # Example Output #
                         {
-                        "shape": "circular",
-                        "theme": ["nature", "health"],
-                        "materials": "wood",
-                        "parameters": {
-                            "courtyard_area": "400 sqm",
-                            "social_area": "180 sqm",
-                            "permeable_area": "300 sqm",
-                            "calm_area": "120 sqm",
-                            "flower_area": "80 sqm",
-                            "tree_number": "12",
-                            "tree_species": "3",
-                            "score_health": "8/10",
-                            "score_biodiversity": "9/10",
-                            "score_open_space": "7/10",
-                            "score_design_integration": "8.5/10"
-                        }
+                        "tree_species": "oak,maple,cherry",
+                        "tree_number": "12",
+                        "flower_types": "lavender,daffodil",
+                        "materials": "wood,concrete"
                         }
                         """,
             },
@@ -237,45 +266,36 @@ The design emphasizes the emotional impact of the space by incorporating element
                         """,
             },
         ],
-        response_format={
+        response_format=
+                {
                 "type": "json_schema",
                 "json_schema": {
                     "name": "attributes",
-                    "description": "Extracted attributes from the text",
+                    "description": "Extracted vegetation and material attributes from the text",
                     "strict": "true",
                     "schema": {
-                        "type": "object",
-                        "properties": {
-                            "shape": {"type": "array", "items": {"type": "string"}},
-                            "theme": {"type": "array", "items": {"type": "string"}},
-                            "materials": {"type": "array", "items": {"type": "string"}},
-                            "parameters": {
-                                "type": "object",
-                                "properties": {
-                                    "courtyard_area": {"type": "string"},
-                                    "social_area": {"type": "string"},
-                                    "permeable_area": {"type": "string"},
-                                    "calm_area": {"type": "string"},
-                                    "flower_area": {"type": "string"},
-                                    "tree_number": {"type": "string"},
-                                    "tree_species": {"type": "string"},
-                                    "score_health": {"type": "number"},
-                                    "score_biodiversity": {"type": "number"},
-                                    "score_open_space": {"type": "number"},
-                                    "score_design_integration": {"type": "number"}
-                                },
-                                "required": [
-                                    "courtyard_area", "social_area", "permeable_area",
-                                    "calm_area", "flower_area", "tree_number",
-                                    "tree_species", "score_health", "score_biodiversity",
-                                    "score_open_space", "score_design_integration"
-                                ]
-                            },
-                            },
-                            "required": ["shape", "theme", "materials", "parameters"]
-                            }
+                    "type": "object",
+                    "properties": {
+                        "tree_species": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                        },
+                        "tree_number": {
+                        "type": "string"
+                        },
+                        "flower_types": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                        },
+                        "materials": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                        }
+                    },
+                    "required": ["tree_species", "tree_number", "flower_types", "materials"]
+                    }
                 }
-            }
+                }
 
     )
     return response.choices[0].message.content
@@ -290,21 +310,19 @@ def create_question(message):
                 "content": """
                         # Instruction #
                         You are a thoughtful research assistant specializing in architecture.
-                        Your task is to create an open-ended question based on the given text.
+                        Your task is to create a targeted question based on the text to facilitate courtyard design.
                         Imagine the question will be answered using a detailed text about courtyard design and related elements and scores.
-                        The question should feel exploratory and intellectually curious.
                         Output only the question, without any extra text.
 
                         # Examples #
-                        - Is this courtyard design suitable for children, and how does it promote their well-being?
+                        - What layout principles can help organize a courtyard with distinct zones for trees, social areas, flowers, and quiet relaxation?
                         - How does the design of this courtyard contribute to biodiversity and environmental sustainability?
                         - What are the key elements of this courtyard design that enhance social interaction and community engagement?
                         - How could the design of this courtyard be improved to better integrate with the surrounding environment?
                         - What are some critical aspects of this courtyard design that one should be aware of when considering its impact on health and well-being?
 
                         # Important #
-                        Keep the question open-ended, inviting multiple references or examples.
-                        The question must be naturally connected to the themes present in the input text.
+                        Keep the questions targeted and relevant to the courtyard design. Avoid vague or overly broad questions. The goal is to elicit specific information that can guide the design process.
                         """,
             },
             {

@@ -47,7 +47,7 @@ mistral = [
 ]
 
 # This is a cloudflare model
-cloudflare_model = "@hf/nousresearch/hermes-2-pro-mistral-7b"
+cloudflare_model = "@cf/meta/llama-4-scout-17b-16e-instruct"
 
 # Define what models to use according to chosen "mode"
 def api_mode (mode):
