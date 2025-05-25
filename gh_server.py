@@ -72,9 +72,10 @@ def llm_call_generate_locations():
 def llm_call_generate_connections():
     data = request.get_json()
     connections_conversation = data.get('conversation')
-    connections = extract_connections_with_conversation(connections_conversation)
+    result = extract_connections_with_conversation(connections_conversation)
+    print("Received connections:", result)
         # Parse connections JSON
-    connections_match = re.search(r'\{.*\}', connections, re.DOTALL)
+    connections_match = re.search(r'\{.*\}', result, re.DOTALL)
     if connections_match:
         try:
             connections_json = json.loads(connections_match.group(0))
@@ -83,9 +84,8 @@ def llm_call_generate_connections():
             connections_json = {}
     else:
         connections_json = {}
-    print("Received connections:", connections)
     return jsonify({
-        "connections": connections_json
+        "connections": connections_json["connections"],
     })
 
 @app.route('/llm_call/generate_targets', methods=['POST'])

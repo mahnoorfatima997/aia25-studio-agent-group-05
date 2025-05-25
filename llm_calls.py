@@ -233,7 +233,7 @@ def extract_connections_with_conversation(conversation_messages):
 
                 **Example Output:**
                 {
-                [[0, 2], [1, 3], [4, 5]]
+                "connections": [[0, 2], [1, 3], [4, 5]]
                 }
                         """,
             },
@@ -280,7 +280,7 @@ def extract_targets_with_conversation(conversation_messages):
 
                 **Example Output:**
                 {
-                [[0, 2], [1, 3], [4, 5]]
+                "targets": [[0, 2], [1, 3], [4, 5]]
                 }
                         """,
             },
