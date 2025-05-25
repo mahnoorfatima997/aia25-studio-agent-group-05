@@ -68,6 +68,45 @@ def llm_call_generate_locations():
         "locations": locations_json
     })
 
+@app.route('/llm_call/generate_connections', methods=['POST'])
+def llm_call_generate_connections():
+    data = request.get_json()
+    connections_conversation = data.get('conversation')
+    connections = extract_connections_with_conversation(connections_conversation)
+        # Parse connections JSON
+    connections_match = re.search(r'\{.*\}', connections, re.DOTALL)
+    if connections_match:
+        try:
+            connections_json = json.loads(connections_match.group(0))
+        except Exception as e:
+            print(f"Could not parse connections JSON: {e}")
+            connections_json = {}
+    else:
+        connections_json = {}
+    print("Received connections:", connections)
+    return jsonify({
+        "connections": connections_json
+    })
+
+@app.route('/llm_call/generate_targets', methods=['POST'])
+def llm_call_generate_targets():
+    data = request.get_json()
+    targets_conversation = data.get('conversation')
+    targets = extract_targets_with_conversation(targets_conversation)
+        # Parse targets JSON
+    targets_match = re.search(r'\{.*\}', targets, re.DOTALL)
+    if targets_match:
+        try:
+            targets_json = json.loads(targets_match.group(0))
+        except Exception as e:
+            print(f"Could not parse targets JSON: {e}")
+            targets_json = {}
+    else:
+        targets_json = {}
+    print("Received targets:", targets)
+    return jsonify({
+        "targets": targets_json
+    })
 
 if __name__ == '__main__':
     app.run(debug=True)
