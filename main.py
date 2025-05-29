@@ -120,3 +120,5 @@ else:
     # Get a response based on the knowledge found
     rag_result= rag_call(courtyard_question, embeddings = "knowledge/merged.json", n_results = 10)
     print(rag_result)
+
+    #hi!
