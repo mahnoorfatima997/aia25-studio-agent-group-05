@@ -37,46 +37,6 @@ def classify_input(message):
     return response.choices[0].message.content
 
 
-# def generate_concept(message):
-#     response = client.chat.completions.create(
-#         model=completion_model,
-#         messages=[
-#             {
-#                 "role": "system",
-#                 "content": """
-#                         You are a leading landscape architect and designer.
-
-#                         Your task is to generate a **short**, **clear**, and **practical** concept for a courtyard design based on the user's input and the provided attributes.
-
-#                         Limit your response to **a single paragraph**, **no more than 3 sentences** total. Use concise language.
-
-#                         Mention:
-#                         - Key spatial strategies
-#                         - Suggested materials
-#                         - General use of areas
-
-#                         Then, include all relevant spatial areas and performance scores in the following format:
-
-#                         "We envision an outdoor space with a total plot area of {plot_area} sqm, centered around a courtyard of {courtyard_area} sqm. The design includes {area_descriptions}. The site supports {tree_count} trees across {tree_species_count} different species. This design approach scores {score_list}."
-
-#                         Where:
-#                         - `{area_descriptions}` is a list of all area types (e.g., social, calm, permeable, garden) and their sizes (e.g., "20 sqm of social zones, 15 sqm of calm spaces").
-#                         - `{score_list}` includes values for performance metrics such as health, biodiversity, open space quality, and integration (e.g., "8.5 for health benefits, 7.2 for biodiversity").
-
-#                         Only use the attributes provided in the JSON. Do not assume or fabricate additional ones. Do not include explanations or extra information.
-#                         """,
-#             },
-#             {
-#                 "role": "user",
-#                 "content": f"""
-#                         What are the concepts and parameters behind this courtyard design? 
-#                         Initial information: {message}
-#                         """,
-#             },
-#         ],
-#     )
-#     return response.choices[0].message.content
-
 def generate_concept_with_conversation(conversation_messages):
     chat_messages = [
             {
@@ -115,92 +75,6 @@ def generate_concept_with_conversation(conversation_messages):
         messages=chat_messages
     )
     return response.choices[0].message.content
-
-
-def extract_weights_with_conversation(conversation_messages):
-    chat_messages = [
-            {
-                "role": "system",
-                "content": """
-
-                        Your task is to examine the user prompt, attributes and the previous conversation history to generate a list of area categories with their relative weights. Assign a value between **"1"** (not included) and **"20"** (dominant feature) for each provided area category. Use only the categories based on the text. These values should be scaled based on their relative size or importance in the design.
-
-                        **Format your output exactly like this:**
-
-                        # Example Output:
-                        {
-                        "calm area": "5",
-                        "playground": "12",
-                        "social area": "8",
-                        "permeable ground": "15",
-                        }
-                        
-                        Do **not** include any explanation, notes, or extra text — just the json.
-
-                        """,
-            },
-        ]
-    chat_messages.extend(conversation_messages)
-    print("Extracting weights with conversation history...")
-    print("Conversation messages:", chat_messages)
-    response = client.chat.completions.create(
-        model=completion_model,
-        messages=chat_messages,
-        response_format=
-                {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "attributes",
-                        "description": "Extracted design-related attributes from the text",
-                        "strict": True,
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-    )
-    return response.choices[0].message.content
-
-
-def extract_locations_with_conversation(conversation_messages):
-    chat_messages = [
-            {
-                "role": "system",
-                "content": """
-
-                        Your task is to determine the placement of each functional zone on a 20 by 20 grid courtyard, based on the user's design intent and the relative importance (weights) of each zone.
-
-                        The grid is defined with X and Y axes:
-                        - X ranges from 0 to 19 (left to right)
-                        - Y ranges from 0 to 19 (bottom to top)
-
-                        You will be given a list of functional zones, along with their relative weights. Use these to decide appropriate placements. Zones with higher weights should be placed in more central, accessible, or prominent positions as inferred from the prompt.
-
-                        Your output must use this **exact format**:
-                        {
-                        "Function1": [X, Y],
-                        "Function2": [X, Y],
-                        ...
-                        }
-                        Only include the functions provided in the input. Each `[X, Y]` should be a pair of integers between 0 and 19. 
-                        
-                        Do **not** include any explanation, notes, or extra text — just the json.
-
-                        """,
-            },
-        ]
-    chat_messages.extend(conversation_messages)
-    print("Extracting locations with conversation history...")
-    print("Conversation messages:", chat_messages)
-    response = client.chat.completions.create(
-        model=completion_model,
-        messages=chat_messages,
-    )
-    return response.choices[0].message.content
-
 
 def extract_connections_with_conversation(conversation_messages):
     chat_messages = [
@@ -347,14 +221,16 @@ def generate_prompt(message):
                 "content": """
                         Depending on the user's input and the results of the previous steps, generate a prompt for an image generation model.
                         The prompt should be a detailed description of the courtyard design, but limit it to one paragraph. It should not exceed 150 words.
+                        The prompt should identify the objects in the screenshot provided by the user and describe the courtyard design in a way that matches the user's input. 
+
                         Do not add any extra information or explanations.
                         Example:
                         
                         Input:
-                        We envision an outdoor space with a total plot area of 1,200 sqm, centered around a courtyard of 400 sqm. The design includes 120 sqm of calm areas for relaxation and 180 sqm of social zones for gathering. To enhance environmental quality, the site features 300 sqm of permeable ground and supports 12 trees across three different species (oak, maple, and cherry). Additionally, 80 sqm is allocated for flower beds to boost biodiversity. This design approach scores 8/10 for health benefits, 9/10 for biodiversity value, 7/10 for open space quality, and 8.5/10 for design integration.
+                        We envision a courtyard design that emphasizes tree diversity. There are many flower beds and green areas, with benches and seating areas for relaxation. The design promotes biodiversity and creates a welcoming environment for all ages, with ample space for children to play and adults to gather.
 
                         Output:
-                        A serene courtyard design featuring a 400 sqm central area surrounded by 120 sqm of calm spaces and 180 sqm of social zones. The design incorporates 300 sqm of permeable surfaces, enhancing environmental quality. Twelve trees from three species (oak, maple, cherry) provide shade and biodiversity, while 80 sqm of flower beds add color and attract pollinators. The layout promotes relaxation and social interaction, with modular furniture and flexible lighting. The design scores 8/10 for health benefits, 9/10 for biodiversity value, 7/10 for open space quality, and 8.5/10 for design integration.
+                        A vibrant courtyard design featuring a diverse array of trees and shrubs, with green areas representing lush foliage. Pink flower beds add pops of color, enhancing the natural beauty. Brown elements indicate strategically placed benches and seating areas for relaxation and social interaction. The layout promotes biodiversity and creates a welcoming environment for all ages, with ample space for children to play and adults to gather. The design integrates seamlessly with the surrounding landscape, offering a tranquil escape in an urban setting.
                         """,
             },
             {
@@ -366,85 +242,6 @@ def generate_prompt(message):
         ],
     )
     return response.choices[0].message.content
-
-
-# def extract_attributes(message):
-#     response = client.chat.completions.create(
-#         model=completion_model,
-#         messages=[
-#             {
-#                 "role": "system",
-#                 "content": """
-
-#                         You are a keyword and parameter extraction assistant.
-
-#                         Your task is to read a given concept description and extract specific attributes according to the categories below. Focus only on **vegetation and material-related elements**.
-
-#                         # Categories #
-#                         1. **Tree species**: List all mentioned species or write "None" if not specified.
-#                         2. **Tree number**: Extract as a string (e.g., "12").
-#                         3. **Flower types**: List the flower types mentioned or write "None".
-#                         4. **Materials**: List only physical materials used in the design (e.g., wood, steel, brick, glass). Use lowercase. Separate multiple materials with commas.
-
-#                         # Rules #
-#                         - If an attribute is not mentioned, write `"None"` for that field.
-#                         - Do not generate new values; only extract from the input.
-#                         - Only output the JSON — no explanations, extra text, or formatting characters.
-#                         - Begin your output with `{` and end with `}`.
-#                         - Use lowercase for all items in "materials" and "flower_types".
-#                         - Separate multiple items in lists with commas (no bullet points or line breaks).
-#                         - Always include all four fields in the output, even if some are "None".
-
-#                         # Example Output #
-#                         {
-#                         "tree_species": "oak,maple,cherry",
-#                         "tree_number": "12",
-#                         "flower_types": "lavender,daffodil",
-#                         "materials": "wood,concrete"
-#                         }
-#                         """,
-#             },
-#             {
-#                 "role": "user",
-#                 "content": f"""
-#                         # GIVEN TEXT # 
-#                         {message}
-#                         """,
-#             },
-#         ],
-#         response_format=
-#                 {
-#                 "type": "json_schema",
-#                 "json_schema": {
-#                     "name": "attributes",
-#                     "description": "Extracted vegetation and material attributes from the text",
-#                     "strict": "true",
-#                     "schema": {
-#                     "type": "object",
-#                     "properties": {
-#                         "tree_species": {
-#                         "type": "array",
-#                         "items": { "type": "string" }
-#                         },
-#                         "tree_number": {
-#                         "type": "string"
-#                         },
-#                         "flower_types": {
-#                         "type": "array",
-#                         "items": { "type": "string" }
-#                         },
-#                         "materials": {
-#                         "type": "array",
-#                         "items": { "type": "string" }
-#                         }
-#                     },
-#                     "required": ["tree_species", "tree_number", "flower_types", "materials"]
-#                     }
-#                 }
-#                 }
-
-#     )
-#     return response.choices[0].message.content
 
 def extract_attributes_with_conversation(conversation_messages):
     chat_messages = [
@@ -516,6 +313,13 @@ def extract_spaces_with_conversation(conversation_messages):
 
                         Your task is to read a given design concept description and extract all specific possible spaces as key–value pairs.
 
+                        You must then categorize these spaces into functional areas based on their intended use, such as:
+                        - **play**: areas for children’s play
+                        - **rest**: spaces for gatherings and social interaction
+                        - **pond**: areas with water features
+                        - **flower**: areas with flower beds
+                        - **tree**: areas with trees
+
                         # Instructions:
                         - Each key must be a **concise, lowercase design parameter** (e.g., "tree species", "bench count", "materials", "path width").
                         - Each value must be **directly lifted or inferred verbatim** from the input (no assumptions or guesses).
@@ -530,13 +334,11 @@ def extract_spaces_with_conversation(conversation_messages):
 
                         # Example Output:
                         {
-                        "tree species": "oak,maple",
-                        "tree count": "12",
-                        "flower types": "lavender,daffodil",
-                        "materials": "brick,wood",
-                        "bench count": "4",
-                        "path width": "2 meters",
-                        "courtyard area": "35 sqm"
+                        "play": "40% of the total area",
+                        "rest": "20% of the total area",
+                        "pond": "15% of the total area",
+                        "flower": "10% of the total area",
+                        "tree": "15% of the total area"
                         }
 
                         """,
@@ -563,6 +365,97 @@ def extract_spaces_with_conversation(conversation_messages):
                         }
                     }
                 }
+    )
+    return response.choices[0].message.content
+
+def extract_tree_types(conversation_messages):
+    chat_messages = [
+            {
+                "role": "system",
+                "content": """
+
+                        You are a tree species extraction assistant.
+                        Your task is to read a given design concept description and extract all specific tree species mentioned as a list.
+
+                        The tree species should be categorized on the basis of their geometric similarity to the following types:
+                        acer, aesculus, eucalyptus, fagus, jacaranda, pinus, platanus, quercus, tilia
+
+                        You will then output the tree species in the following format:
+                        {acer, eucalyptus, acer, fagus}
+
+                        # Instructions:
+                        - Each word must be from the list of tree species provided above
+                        - Each tree species from the input must be compared geometrically to the list of tree species provided above for most similar geometric shape
+                        - If a tree species is not found to match any in the list, any other is to be used as a placeholder
+
+                        # Output Format:
+                        {acer, eucalyptus, acer, fagus}
+                        """,
+            },
+        ]
+    chat_messages.extend(conversation_messages)
+    print("Extracting attributes with conversation history...")
+    print("Conversation messages:", chat_messages)
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=chat_messages,
+    )
+    return response.choices[0].message.content
+
+def extract_plant_water_requirement(conversation_messages):
+    chat_messages = [
+            {
+                "role": "system",
+                "content": """
+
+                        You are a plant water requirement extraction assistant.
+                        Your task is to analyze the tree species mentioned in the design concept description and extract their water requirements as a list.
+                        The water requirements should be listed out as a decimal number between 0 and 1, where 0 means no water is required and 1 means the plant requires a lot of water.
+
+                        You will then output the water requirements in the following format:
+                        {0.1, 0.2, 0.3, 0.4}
+
+                        # Instructions:
+                        - Each number must be a decimal between 0 and 1
+                        """,
+            },
+        ]
+    chat_messages.extend(conversation_messages)
+    print("Extracting attributes with conversation history...")
+    print("Conversation messages:", chat_messages)
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=chat_messages,
+    )
+    return response.choices[0].message.content
+
+def extract_tree_placement(conversation_messages):
+    chat_messages = [
+            {
+                "role": "system",
+                "content": """
+
+                        You are a tree placement assistant.
+                        Your task is to read a given design concept description and extract the tree placement as a list of grid cell numbers.
+                        You will identify between which cells the trees should be placed based on the design concept. You must select the appropriate grid cells based on adjacency and tree radius.
+                        The output format should look like this:
+                        {2 to 4, 5 to 7, 8 to 10}
+
+                        No two numbers should be the same. The number pairs can be in any order.
+
+                        # Instructions:
+                        - Each number must be a grid cell number
+                        - Each number must be unique
+
+                        """,
+            },
+        ]
+    chat_messages.extend(conversation_messages)
+    print("Extracting attributes with conversation history...")
+    print("Conversation messages:", chat_messages)
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=chat_messages,
     )
     return response.choices[0].message.content
 

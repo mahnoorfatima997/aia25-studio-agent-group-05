@@ -14,12 +14,16 @@ if router_output == "Refuse to answer":
     exit()
 
 # Step 2: Concept
-brainstorm = generate_concept(user_message)
+brainstorm = generate_concept_with_conversation([
+    {"role": "user", "content": user_message}
+])
 print("\nConcept generated:\n", brainstorm)
 input("Press Enter to continue to attribute extraction...")
 
 # Step 3: Attributes
-attributes = extract_attributes(brainstorm)
+attributes = extract_attributes_with_conversation([
+    {"role": "user", "content": brainstorm}
+])
 print("\nExtracted attributes (raw):\n", attributes)
 # Try to parse JSON
 try:
@@ -36,45 +40,78 @@ if user_mod.strip():
     except Exception as e:
         print("Could not parse user-modified attributes as JSON:", e)
 
-# Step 4: Weights
-weights = generate_weights(user_message)
-print("\nGenerated weights (raw):\n", weights)
-# Try to extract JSON from weights
-match = re.search(r'\{.*\}', weights, re.DOTALL)
+# Step 4: connections
+connections = extract_connections_with_conversation([
+    {"role": "user", "content": user_message}
+])
+print("\nGenerated connections (raw):\n", connections)
+# Try to extract JSON from connections
+match = re.search(r'\{.*\}', connections, re.DOTALL)
 if match:
     try:
-        weights_json = json.loads(match.group(0))
-        print("Parsed weights (JSON):\n", json.dumps(weights_json, indent=2))
+        connections_json = json.loads(match.group(0))
+        print("Parsed connections (JSON):\n", json.dumps(connections_json, indent=2))
     except Exception as e:
         print("Could not parse weights as JSON:", e)
-        weights_json = None
+        connections_json = None
 else:
-    print("No JSON found in weights output.")
-    weights_json = None
+    print("No JSON found in connections output.")
+    connections_json = None
 input("Press Enter to continue to locations...")
 
-# Step 5: Locations
-locations = generate_locations(user_message)
-print("\nGenerated locations (raw):\n", locations)
-match = re.search(r'\{.*\}', locations, re.DOTALL)
+# Step 5: targets
+targets = extract_targets_with_conversation([
+    {"role": "user", "content": user_message}
+])
+print("\nGenerated targets (raw):\n", targets)
+match = re.search(r'\{.*\}', targets, re.DOTALL)
 if match:
     try:
-        locations_json = json.loads(match.group(0))
-        print("Parsed locations (JSON):\n", json.dumps(locations_json, indent=2))
+        targets_json = json.loads(match.group(0))
+        print("Parsed targets (JSON):\n", json.dumps(targets_json, indent=2))
     except Exception as e:
-        print("Could not parse locations as JSON:", e)
-        locations_json = None
+        print("Could not parse targets as JSON:", e)
+        targets_json = None
 else:
-    print("No JSON found in locations output.")
-    locations_json = None
+    print("No JSON found in targets output.")
+    targets_json = None
 input("Press Enter to continue to question generation...")
+
+# Step 6: spaces
+spaces = extract_spaces_with_conversation([
+    {"role": "user", "content": user_message}
+])
+print("\nSpaces generated:\n", spaces)
+input("Press Enter to continue...")
+
+# Step 7: treetypes
+tree_types = extract_tree_types([
+    {"role": "user", "content": user_message}
+])
+print("\ntree_types:\n", tree_types)
+input("Press Enter to continue...")
+
+# Step 8: PWR
+pwr = extract_plant_water_requirement([
+    {"role": "user", "content": user_message}
+])
+print("\nPWR:\n", pwr)
+input("Press Enter to continue...")
+
+# Step 9: tree placement
+tree_placement = extract_tree_placement([
+    {"role": "user", "content": user_message}
+])
+print("\tree placement:\n", tree_placement)
+input("Press Enter to continue...")
+
 
 # Step 6: Question and RAG
 context_info = f"User input: {user_message}\n" \
               f"Concept: {brainstorm}\n" \
               f"Attributes: {attributes}\n" \
-              f"Weights: {weights}\n" \
-              f"Locations: {locations}\n"
+              f"Weights: {connections}\n" \
+              f"Locations: {targets}\n"
 courtyard_question = create_question(context_info)
 print("\nGenerated question for RAG:\n", courtyard_question)
 input("Press Enter to get RAG results...")
