@@ -211,38 +211,6 @@ def generate_casestudies(message):
     )
     return response.choices[0].message.content
 
-
-def generate_prompt(message):
-    response = client.chat.completions.create(
-        model=completion_model,
-        messages=[
-            {
-                "role": "system",
-                "content": """
-                        Depending on the user's input and the results of the previous steps, generate a prompt for an image generation model.
-                        The prompt should be a detailed description of the courtyard design, but limit it to one paragraph. It should not exceed 150 words.
-                        The prompt should identify the objects in the screenshot provided by the user and describe the courtyard design in a way that matches the user's input. 
-
-                        Do not add any extra information or explanations.
-                        Example:
-                        
-                        Input:
-                        We envision a courtyard design that emphasizes tree diversity. There are many flower beds and green areas, with benches and seating areas for relaxation. The design promotes biodiversity and creates a welcoming environment for all ages, with ample space for children to play and adults to gather.
-
-                        Output:
-                        A vibrant courtyard design featuring a diverse array of trees and shrubs, with green areas representing lush foliage. Pink flower beds add pops of color, enhancing the natural beauty. Brown elements indicate strategically placed benches and seating areas for relaxation and social interaction. The layout promotes biodiversity and creates a welcoming environment for all ages, with ample space for children to play and adults to gather. The design integrates seamlessly with the surrounding landscape, offering a tranquil escape in an urban setting.
-                        """,
-            },
-            {
-                "role": "user",
-                "content": f"""
-                        {message}
-                        """,
-            },
-        ],
-    )
-    return response.choices[0].message.content
-
 def extract_attributes_with_conversation(conversation_messages):
     chat_messages = [
             {
@@ -491,6 +459,80 @@ def create_question(message):
                         """,
             },
         ],
+    )
+    return response.choices[0].message.content
+
+def generate_prompt_with_context(concept, attributes, connections, targets, spaces, tree_types, pwr, tree_placement):
+    """
+    Generates a detailed prompt for an image generation model, using all relevant design data and spatial logic.
+    Args:
+        concept (str): The design concept text.
+        attributes (dict or str): Extracted attributes (JSON or string).
+        connections (dict or str): Zone connections (JSON or string).
+        targets (dict or str): Zone-to-grid assignments (JSON or string).
+        spaces (dict or str): Extracted spaces (JSON or string).
+        tree_types (str): Tree types (string or list).
+        pwr (str): Plant water requirements.
+        tree_placement (str): Tree placement info.
+    Returns:
+        str: A prompt for an image generation model.
+    """
+    # Convert all inputs to string for LLM context
+    def to_str(val):
+        if isinstance(val, dict):
+            return json.dumps(val, indent=2)
+        return str(val)
+
+    context = f"""
+# Courtyard Design Context #
+Concept:
+{to_str(concept)}
+
+Attributes:
+{to_str(attributes)}
+
+Functional Zones and Connections:
+{to_str(connections)}
+
+Zone-to-Grid Assignments:
+{to_str(targets)}
+
+Spaces:
+{to_str(spaces)}
+
+Tree Types:
+{to_str(tree_types)}
+
+Plant Water Requirements:
+{to_str(pwr)}
+
+Tree Placement:
+{to_str(tree_placement)}
+"""
+
+    system_prompt = """
+You are an expert landscape architect and visual storyteller.
+Your task is to generate a detailed, vivid, and spatially accurate prompt for an image generation model (such as Stable Diffusion or DALL-E) to visualize a courtyard design.
+
+# Instructions:
+- Use the provided context (concept, attributes, connections, grid assignments, spaces, tree types, water requirements, and tree placement).
+- Clearly describe the spatial arrangement: where each functional zone, tree, and feature is located on the grid.
+- Mention the number, type, and placement of trees, flower beds, and other key elements.
+- Describe the materials, colors, and atmosphere as inferred from the attributes.
+- Use concise, visual language. Do not include any explanation or extra text—just the prompt.
+- The prompt should be a single paragraph, max 120 words.
+
+# Example Output:
+A sunlit courtyard with a central calm area (grid 10,10), social zones to the south (grids 5,5 to 5,10), permeable garden beds along the east edge, and a cluster of oak and maple trees (grids 12,12 and 13,13). Flower beds with lavender and daffodil line the paths. Benches and permeable paving create a welcoming, sustainable space. The design integrates biodiversity, health, and social interaction, with a mix of brick, wood, and green foliage.
+"""
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": context}
+    ]
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=messages
     )
     return response.choices[0].message.content
 
