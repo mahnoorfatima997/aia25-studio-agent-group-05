@@ -105,7 +105,25 @@ def llm_call_generate_PWR_locations():
         "PWR" : generated_PWR
     })
 
+@app.route('/llm_call/generate_image_prompt', methods=['POST'])
+def llm_call_generate_image_prompt():
+    data = request.get_json()
+    concept = data.get('concept', '')
+    attributes = data.get('attributes', {})
+    connections = data.get('connections', {})
+    targets = data.get('targets', {})
+    spaces = data.get('spaces', {})
+    tree_types = data.get('tree_types', '')
+    pwr = data.get('pwr', '')
+    tree_placement = data.get('tree_placement', '')
+    print("Received design data for image prompt generation:", data)
 
+    prompt = generate_prompt_with_context(
+        concept, attributes, connections, targets, spaces, tree_types, pwr, tree_placement
+    )
+    return jsonify({
+        "prompt": prompt
+    })
 
 if __name__ == '__main__':
     app.run(debug=True)
