@@ -78,9 +78,9 @@ def generate_concept_with_conversation(conversation_messages):
 
 def extract_connections_with_conversation(conversation_messages):
     chat_messages = [
-            {
-                "role": "system",
-                "content": """
+        {
+            "role": "system",
+            "content": """
 
                 You are assisting in the spatial design of a courtyard.
 
@@ -100,15 +100,11 @@ def extract_connections_with_conversation(conversation_messages):
 
                 Output Instructions:
                 Output only a JSON array of index pairs, where each pair [a, b] means the zone at index a should connect to the zone at index b.
-
                 The order of the list should match the inferred zone list from step 1.
-
                 Do not include any explanation, text, or metadata — just the final result in the format below:
 
                 **Example Output:**
-                {
-                "connections": [[0, 2], [1, 3], [4, 5]]
-                }
+                {\"connections\": [[0, 2], [1, 3], [4, 5]]}
                         """,
             },
         ]
@@ -118,14 +114,38 @@ def extract_connections_with_conversation(conversation_messages):
     response = client.chat.completions.create(
         model=completion_model,
         messages=chat_messages,
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "connections",
+                "description": "Zone adjacency connections",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "connections": {
+                            "type": "array",
+                            "items": {
+                                "type": "array",
+                                "items": {"type": "integer"},
+                                "minItems": 2,
+                                "maxItems": 2
+                            }
+                        }
+                    },
+                    "required": ["connections"]
+                }
+            }
+        }
     )
-    return response.choices[0].message.content
+    connections = json.loads(response.choices[0].message.content)["connections"]
+    return connections
 
-def extract_targets_with_conversation(conversation_messages):
+def extract_targets_with_conversation(conversation_messages, num_zones=None):
     chat_messages = [
-            {
-                "role": "system",
-                "content": """
+        {
+            "role": "system",
+            "content": """
 
                 You are assisting in the spatial design of a courtyard.
 
@@ -148,15 +168,7 @@ def extract_targets_with_conversation(conversation_messages):
                 4. Each zone index should be mapped to a single unique cell number.
 
                 Output Instructions:
-                Output only a JSON array of index-cell pairs, where each pair [a, b] means the zone at index a should be placed at cell b in the courtyard.
-
-                Do not include any explanation, text, or metadata — just the final result in the format below:
-
-                **Example Output:**
-                {
-                "targets": [[0, 2], [1, 3], [4, 5]]
-                }
-                        """,
+                Output only a JSON array of index-cell pairs, where each pair [a, b] means the zone at index a should be placed at cell b in the courtyard.\nYour array should match the order of the zone list inferred from the previous step.\nDo not include any explanation, text, or metadata — just the final result in the format below:\n\n**Example Output:**\n{\n\"targets\": [[0, 2], [1, 3], [4, 5]]\n}\n""",
             },
         ]
     chat_messages.extend(conversation_messages)
@@ -165,8 +177,39 @@ def extract_targets_with_conversation(conversation_messages):
     response = client.chat.completions.create(
         model=completion_model,
         messages=chat_messages,
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "targets",
+                "description": "Zone-to-grid assignments",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "targets": {
+                            "type": "array",
+                            "items": {
+                                "type": "array",
+                                "items": {"type": "integer"},
+                                "minItems": 2,
+                                "maxItems": 2
+                            }
+                        }
+                    },
+                    "required": ["targets"]
+                }
+            }
+        }
     )
-    return response.choices[0].message.content
+    targets = json.loads(response.choices[0].message.content)["targets"]
+    # Truncate or pad targets to match num_zones if provided
+    if num_zones is not None:
+        if len(targets) > num_zones:
+            targets = targets[:num_zones]
+        elif len(targets) < num_zones:
+            # Pad with dummy pairs [-1, -1] if not enough targets
+            targets += [[-1, -1]] * (num_zones - len(targets))
+    return targets
 
 
 def generate_casestudies(message):
@@ -318,57 +361,42 @@ def extract_spaces_with_conversation(conversation_messages):
     response = client.chat.completions.create(
         model=completion_model,
         messages=chat_messages,
-        response_format=
-                {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "attributes",
-                        "description": "Extracted design-related attributes from the text",
-                        "strict": True,
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
     )
     return response.choices[0].message.content
 
-def extract_tree_types(conversation_messages):
-    chat_messages = [
-            {
-                "role": "system",
-                "content": """
+# def extract_tree_types(conversation_messages):
+#     chat_messages = [
+#             {
+#                 "role": "system",
+#                 "content": """
 
-                        You are a tree species extraction assistant.
-                        Your task is to read a given design concept description and extract all specific tree species mentioned as a list.
+#                         You are a tree species extraction assistant.
+#                         Your task is to read a given design concept description and extract all specific tree species mentioned as a list.
 
-                        The tree species should be categorized on the basis of their geometric similarity to the following types:
-                        acer, aesculus, eucalyptus, fagus, jacaranda, pinus, platanus, quercus, tilia
+#                         The tree species should be categorized on the basis of their geometric similarity to the following types:
+#                         acer, aesculus, eucalyptus, fagus, jacaranda, pinus, platanus, quercus, tilia
 
-                        You will then output the tree species in the following format:
-                        {acer, eucalyptus, acer, fagus}
+#                         You will then output the tree species in the following format:
+#                         {acer, eucalyptus, acer, fagus}
 
-                        # Instructions:
-                        - Each word must be from the list of tree species provided above
-                        - Each tree species from the input must be compared geometrically to the list of tree species provided above for most similar geometric shape
-                        - If a tree species is not found to match any in the list, any other is to be used as a placeholder
+#                         # Instructions:
+#                         - Each word must be from the list of tree species provided above
+#                         - Each tree species from the input must be compared geometrically to the list of tree species provided above for most similar geometric shape
+#                         - If a tree species is not found to match any in the list, any other is to be used as a placeholder
 
-                        # Output Format:
-                        {acer, eucalyptus, acer, fagus}
-                        """,
-            },
-        ]
-    chat_messages.extend(conversation_messages)
-    print("Extracting attributes with conversation history...")
-    print("Conversation messages:", chat_messages)
-    response = client.chat.completions.create(
-        model=completion_model,
-        messages=chat_messages,
-    )
-    return response.choices[0].message.content
+#                         # Output Format:
+#                         {acer, eucalyptus, acer, fagus}
+#                         """,
+#             },
+#         ]
+#     chat_messages.extend(conversation_messages)
+#     print("Extracting attributes with conversation history...")
+#     print("Conversation messages:", chat_messages)
+#     response = client.chat.completions.create(
+#         model=completion_model,
+#         messages=chat_messages,
+#     )
+#     return response.choices[0].message.content
 
 def extract_plant_water_requirement(conversation_messages):
     chat_messages = [
@@ -399,31 +427,62 @@ def extract_plant_water_requirement(conversation_messages):
 
 def extract_tree_placement(conversation_messages):
     chat_messages = [
-            {
-                "role": "system",
-                "content": """
+        {
+            "role": "system",
+            "content": """
+                        You are a tree placement assistant and a tree species assistant.
+                        Your task is to read a given design concept description and extract:
+                        1. All specific tree species mentioned as a list, categorized by geometric similarity to the following types: acer, aesculus, eucalyptus, fagus, jacaranda, pinus, platanus, quercus, tilia.
+                        2. The tree placement as a list of grid cell number pairs, based on adjacency and tree radius.
 
-                        You are a tree placement assistant.
-                        Your task is to read a given design concept description and extract the tree placement as a list of grid cell numbers.
-                        You will identify between which cells the trees should be placed based on the design concept. You must select the appropriate grid cells based on adjacency and tree radius.
-                        The output format should look like this:
-                        {2 to 4, 5 to 7, 8 to 10}
+                        # Output Format:
+                        Return a single JSON object with two keys:
+                        - "tree_species": a list of tree species (e.g., ["acer", "eucalyptus", "acer", "fagus"])
+                        - "tree_placement": a list of string ranges (e.g., ["2 to 4", "5 to 7", "8 to 10"])
 
-                        No two numbers should be the same. The number pairs can be in any order.
+                        # Example Output:
+                        {
+                        "tree_species": ["acer", "eucalyptus", "acer", "fagus"],
+                        "tree_placement": ["2 to 4", "5 to 7", "8 to 10"]
+                        }
 
                         # Instructions:
-                        - Each number must be a grid cell number
-                        - Each number must be unique
-
+                        - Each word in "tree_species" must be from the list above.
+                        - Each tree species from the input must be compared geometrically to the list for the most similar shape.
+                        - If a tree species is not found to match any in the list, use any other as a placeholder.
+                        - Each number in "tree_placement" must be a unique grid cell number or range.
+                        - Do not include any explanation, extra text, or formatting—just the JSON object as shown above.
                         """,
-            },
-        ]
+        },
+    ]
     chat_messages.extend(conversation_messages)
-    print("Extracting attributes with conversation history...")
+    print("Extracting tree placement and species with conversation history...")
     print("Conversation messages:", chat_messages)
     response = client.chat.completions.create(
         model=completion_model,
         messages=chat_messages,
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "tree_placement_and_species",
+                "description": "Extracted tree species and their placement as a JSON object.",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "tree_species": {
+                            "type": "array",
+                            "items": {"type": "string"}
+                        },
+                        "tree_placement": {
+                            "type": "array",
+                            "items": {"type": "string"}
+                        }
+                    },
+                    "required": ["tree_species", "tree_placement"]
+                }
+            }
+        }
     )
     return response.choices[0].message.content
 
@@ -462,7 +521,7 @@ def create_question(message):
     )
     return response.choices[0].message.content
 
-def generate_prompt_with_context(concept, attributes, connections, targets, spaces, tree_types, pwr, tree_placement):
+def generate_image_prompt(concept, attributes, connections, targets, spaces, pwr, tree_placement):
     """
     Generates a detailed prompt for an image generation model, using all relevant design data and spatial logic.
     Args:
@@ -471,7 +530,6 @@ def generate_prompt_with_context(concept, attributes, connections, targets, spac
         connections (dict or str): Zone connections (JSON or string).
         targets (dict or str): Zone-to-grid assignments (JSON or string).
         spaces (dict or str): Extracted spaces (JSON or string).
-        tree_types (str): Tree types (string or list).
         pwr (str): Plant water requirements.
         tree_placement (str): Tree placement info.
     Returns:
@@ -499,9 +557,6 @@ Zone-to-Grid Assignments:
 
 Spaces:
 {to_str(spaces)}
-
-Tree Types:
-{to_str(tree_types)}
 
 Plant Water Requirements:
 {to_str(pwr)}

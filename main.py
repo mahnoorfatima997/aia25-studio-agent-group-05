@@ -68,6 +68,7 @@ match = re.search(r'\{.*\}', targets, re.DOTALL)
 if match:
     try:
         targets_json = json.loads(match.group(0))
+        print(match.group(0))
         print("Parsed targets (JSON):\n", json.dumps(targets_json, indent=2))
     except Exception as e:
         print("Could not parse targets as JSON:", e)
@@ -82,13 +83,6 @@ spaces = extract_spaces_with_conversation([
     {"role": "user", "content": user_message}
 ])
 print("\nSpaces generated:\n", spaces)
-input("Press Enter to continue...")
-
-# Step 7: treetypes
-tree_types = extract_tree_types([
-    {"role": "user", "content": user_message}
-])
-print("\ntree_types:\n", tree_types)
 input("Press Enter to continue...")
 
 # Step 8: PWR
