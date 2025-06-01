@@ -113,32 +113,9 @@ def extract_connections_with_conversation(conversation_messages):
     print("Conversation messages:", chat_messages)
     response = client.chat.completions.create(
         model=completion_model,
-        messages=chat_messages,
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
-                "name": "connections",
-                "description": "Zone adjacency connections",
-                "strict": True,
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "connections": {
-                            "type": "array",
-                            "items": {
-                                "type": "array",
-                                "items": {"type": "integer"},
-                                "minItems": 2,
-                                "maxItems": 2
-                            }
-                        }
-                    },
-                    "required": ["connections"]
-                }
-            }
-        }
+        messages=chat_messages
     )
-    connections = json.loads(response.choices[0].message.content)["connections"]
+    connections = json.loads(response.choices[0].message.content).get("connections", [])
     return connections
 
 def extract_targets_with_conversation(conversation_messages, num_zones=None):
@@ -176,32 +153,9 @@ def extract_targets_with_conversation(conversation_messages, num_zones=None):
     print("Conversation messages:", chat_messages)
     response = client.chat.completions.create(
         model=completion_model,
-        messages=chat_messages,
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
-                "name": "targets",
-                "description": "Zone-to-grid assignments",
-                "strict": True,
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "targets": {
-                            "type": "array",
-                            "items": {
-                                "type": "array",
-                                "items": {"type": "integer"},
-                                "minItems": 2,
-                                "maxItems": 2
-                            }
-                        }
-                    },
-                    "required": ["targets"]
-                }
-            }
-        }
+        messages=chat_messages
     )
-    targets = json.loads(response.choices[0].message.content)["targets"]
+    targets = json.loads(response.choices[0].message.content).get("targets", [])
     # Truncate or pad targets to match num_zones if provided
     if num_zones is not None:
         if len(targets) > num_zones:

@@ -45,37 +45,18 @@ connections = extract_connections_with_conversation([
     {"role": "user", "content": user_message}
 ])
 print("\nGenerated connections (raw):\n", connections)
-# Try to extract JSON from connections
-match = re.search(r'\{.*\}', connections, re.DOTALL)
-if match:
-    try:
-        connections_json = json.loads(match.group(0))
-        print("Parsed connections (JSON):\n", json.dumps(connections_json, indent=2))
-    except Exception as e:
-        print("Could not parse weights as JSON:", e)
-        connections_json = None
-else:
-    print("No JSON found in connections output.")
-    connections_json = None
+# connections is now a list, not a string
+connections_json = {"connections": connections}
+print("Parsed connections (JSON):\n", json.dumps(connections_json, indent=2))
 input("Press Enter to continue to locations...")
 
 # Step 5: targets
 targets = extract_targets_with_conversation([
     {"role": "user", "content": user_message}
-])
+], num_zones=len(connections))
 print("\nGenerated targets (raw):\n", targets)
-match = re.search(r'\{.*\}', targets, re.DOTALL)
-if match:
-    try:
-        targets_json = json.loads(match.group(0))
-        print(match.group(0))
-        print("Parsed targets (JSON):\n", json.dumps(targets_json, indent=2))
-    except Exception as e:
-        print("Could not parse targets as JSON:", e)
-        targets_json = None
-else:
-    print("No JSON found in targets output.")
-    targets_json = None
+targets_json = {"targets": targets}
+print("Parsed targets (JSON):\n", json.dumps(targets_json, indent=2))
 input("Press Enter to continue to question generation...")
 
 # Step 6: spaces

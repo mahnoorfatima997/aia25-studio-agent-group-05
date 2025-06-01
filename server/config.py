@@ -3,7 +3,7 @@ from openai import OpenAI
 from server.keys import *
 
 # Mode
-mode = "local" # "local" or "openai" or "cloudflare"
+mode = "cloudflare" # "local" or "openai" or "cloudflare"
 
 # API
 local_client = OpenAI(base_url="http://localhost:1234/v1", api_key="lm-studio")
@@ -47,32 +47,44 @@ mistral = [
 ]
 
 # This is a cloudflare model
-# cloudflare_model = "@cf/meta/llama-4-scout-17b-16e-instruct"
-# cloudflare_model = "@cf/qwen/qwq-32b"
+cloudflare_model = "@cf/meta/llama-4-scout-17b-16e-instruct"
+cloudflare_model = "@cf/qwen/qwq-32b"
 cloudflare_model = "@cf/mistralai/mistral-small-3.1-24b-instruct"
 
 # Define what models to use according to chosen "mode"
-def api_mode (mode):
+def api_mode(mode):
+    clients = []
+    completion_models = []
+    embedding_models = []
     if mode == "local":
-        client = local_client
-        completion_model = llama3[0]['model']
-        embedding_model = local_embedding_model
-        return client, completion_model, embedding_model
+        # Add all local models you want to run simultaneously
+        for model_cfg in [llama3[0], mistral[0]]:
+            client = OpenAI(base_url=model_cfg['base_url']+"/v1", api_key=model_cfg['api_key'])
+            completion_models.append(model_cfg['model'])
+            embedding_models.append(local_embedding_model)
+            clients.append(client)
+        return clients, completion_models, embedding_models
     
+
     if mode == "cloudflare":
-        client = cloudflare_client
-        completion_model = cloudflare_model
-        embedding_model = cloudflare_embedding_model
-        return client, completion_model, embedding_model
+        # You can add more cloudflare models here if needed
+        clients.append(cloudflare_client)
+        completion_models.append(cloudflare_model)
+        embedding_models.append(cloudflare_embedding_model)
+        return clients, completion_models, embedding_models
+    
     
     # elif mode == "openai":
-    #     client = openai_client
-    #     completion_model = gpt4o
-    #     completion_model = completion_model[0]['model']
-    #     embedding_model = openai_embedding_model
-
-        # return client, completion_model, embedding_model
+    #     clients.append(openai_client)
+    #     completion_models.append(gpt4o[0]['model'])
+    #     embedding_models.append(openai_embedding_model)
+    #     return clients, completion_models, embedding_models
     else:
         raise ValueError("Please specify if you want to run local or openai models")
 
-client, completion_model, embedding_model = api_mode(mode)
+clients, completion_models, embedding_models = api_mode(mode)
+
+# For backward compatibility, set embedding_model and completion_model to the first in the list
+embedding_model = embedding_models[0] if embedding_models else None
+completion_model = completion_models[0] if completion_models else None
+client = clients[0] if clients else None
