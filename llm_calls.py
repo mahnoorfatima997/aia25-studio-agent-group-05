@@ -110,13 +110,36 @@ def extract_connections_with_conversation(conversation_messages):
         ]
     chat_messages.extend(conversation_messages)
     print("Extracting locations with conversation history...")
-    print("Conversation messages:", chat_messages)
     response = client.chat.completions.create(
         model=completion_model,
-        messages=chat_messages
+        messages=chat_messages,
+        response_format=
+                {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "connections",
+                        "description": "Extracted adjacency relationships between functional zones",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "connections": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "array",
+                                        "items": {"type": "integer"},
+                                        "minItems": 2,
+                                        "maxItems": 2
+                                    }
+                                }
+                            },
+                            "required": ["connections"]
+                        }
+                    }
+                }
     )
-    connections = json.loads(response.choices[0].message.content).get("connections", [])
-    return connections
+    print("Response from LLM:", response.choices[0].message.content)
+    return response.choices[0].message.content
 
 def extract_targets_with_conversation(conversation_messages, num_zones=None):
     chat_messages = [
@@ -145,25 +168,45 @@ def extract_targets_with_conversation(conversation_messages, num_zones=None):
                 4. Each zone index should be mapped to a single unique cell number.
 
                 Output Instructions:
-                Output only a JSON array of index-cell pairs, where each pair [a, b] means the zone at index a should be placed at cell b in the courtyard.\nYour array should match the order of the zone list inferred from the previous step.\nDo not include any explanation, text, or metadata — just the final result in the format below:\n\n**Example Output:**\n{\n\"targets\": [[0, 2], [1, 3], [4, 5]]\n}\n""",
+                Output only a JSON array of index-cell pairs, where each pair [a, b] means the zone at index a should be placed at cell b in the courtyard.\nYour array should match the order of the zone list inferred from the previous step.\nDo not include any explanation, text, or metadata — just the final result in the format below:
+                
+                **Example Output:**
+                {\"targets\": [[0, 2], [1, 3], [4, 5]]}""",
             },
         ]
     chat_messages.extend(conversation_messages)
     print("Extracting locations with conversation history...")
-    print("Conversation messages:", chat_messages)
     response = client.chat.completions.create(
         model=completion_model,
-        messages=chat_messages
+        messages=chat_messages,
+        response_format=
+                {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "targets",
+                        "description": "Extracted zone-to-grid assignments for courtyard design",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "targets": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "array",
+                                        "items": {"type": "integer"},
+                                        "minItems": 2,
+                                        "maxItems": 2
+                                    }
+                                }
+                            },
+                            "required": ["targets"]
+                        }
+                    }
+                }
     )
-    targets = json.loads(response.choices[0].message.content).get("targets", [])
-    # Truncate or pad targets to match num_zones if provided
-    if num_zones is not None:
-        if len(targets) > num_zones:
-            targets = targets[:num_zones]
-        elif len(targets) < num_zones:
-            # Pad with dummy pairs [-1, -1] if not enough targets
-            targets += [[-1, -1]] * (num_zones - len(targets))
-    return targets
+
+    print("Response from LLM:", response.choices[0].message.content)
+    return response.choices[0].message.content
 
 
 def generate_casestudies(message):
@@ -276,36 +319,32 @@ def extract_spaces_with_conversation(conversation_messages):
 
                         You are a spatial functions extraction assistant.
 
-                        Your task is to read a given design concept description and extract all specific possible spaces as key–value pairs.
-
-                        You must then categorize these spaces into functional areas based on their intended use, such as:
-                        - **play**: areas for children’s play
-                        - **rest**: spaces for gatherings and social interaction
-                        - **pond**: areas with water features
-                        - **flower**: areas with flower beds
-                        - **tree**: areas with trees
-
-                        # Instructions:
-                        - Each key must be a **concise, lowercase design parameter** (e.g., "tree species", "bench count", "materials", "path width").
-                        - Each value must be **directly lifted or inferred verbatim** from the input (no assumptions or guesses).
-                        - Use lowercase for keys and string values unless the original text uses capitalized proper nouns (e.g., “Japanese maple”).
-                        - Output in a single flat JSON object.
-                        - Include all **quantities, types, dimensions, uses, species, materials, and named spaces** mentioned in the description.
-                        - If multiple values are present, separate them with commas as a single string (e.g., "lavender,daffodil").
+                        Your task is to read a landscape or architecture design description and **infer the relative distribution** of different types of spaces, even if the percentages are not explicitly mentioned.
 
                         # Output Format:
-                        - Only output the JSON — no explanations, extra text, or formatting characters.
-                        - Begin your output with `{` and end with `}`.
+                        Return a JSON object with a single key `spaces`, whose value is an object with the following keys:
+                        - play: percentage of total area used for children’s play (integer)
+                        - rest: percentage for social and relaxation areas (integer)
+                        - pond: percentage for water bodies (integer)
+                        - flower: percentage for flower beds or types of flowers (integer)
+                        - tree: percentage for trees or wooded areas (integer)
+
+                        # Instructions:
+                        - Carefully interpret the text to estimate how much of the space is likely used for each function.
+                        - Use clues like 'calm spaces', 'socio-relaxation zones', 'tree count', 'courtyard', 'native species', etc. to infer relevant percentages.
+                        - Do NOT include textual descriptions. Only output numbers in percentage format.
+                        - All five values must sum up to 100 (use your best judgment).
+                        - Use whole numbers (no decimals).
+                        - If no information is available, assign 0 to that category.
 
                         # Example Output:
                         {
-                        "play": "40% of the total area",
-                        "rest": "20% of the total area",
-                        "pond": "15% of the total area",
-                        "flower": "10% of the total area",
-                        "tree": "15% of the total area"
+                        "play": 10,
+                        "rest": 30,
+                        "pond": 5,
+                        "flower": 15,
+                        "tree": 40
                         }
-
                         """,
             },
         ]
@@ -315,6 +354,32 @@ def extract_spaces_with_conversation(conversation_messages):
     response = client.chat.completions.create(
         model=completion_model,
         messages=chat_messages,
+        temperature=0.2,
+        response_format = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "spaces",
+                    "description": "Extracted spaces and features from the design description",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "spaces": {
+                                "type": "object",
+                                "properties": {
+                                    "play": {"type": "integer"},
+                                    "rest": {"type": "integer"},
+                                    "pond": {"type": "integer"},
+                                    "flower": {"type": "integer"},
+                                    "tree": {"type": "integer"}
+                                },
+                                "required": ["play", "rest", "pond", "flower", "tree"]
+                            }
+                        },
+                        "required": ["spaces"]
+                    }
+                }
+            }
     )
     return response.choices[0].message.content
 
@@ -361,9 +426,12 @@ def extract_plant_water_requirement(conversation_messages):
                         You are a plant water requirement extraction assistant.
                         Your task is to analyze the tree species mentioned in the design concept description and extract their water requirements as a list.
                         The water requirements should be listed out as a decimal number between 0 and 1, where 0 means no water is required and 1 means the plant requires a lot of water.
-
+                        The item number should match the order of the trees mentioned before.
+                        
                         You will then output the water requirements in the following format:
                         {0.1, 0.2, 0.3, 0.4}
+
+                        Do not include any explanation, extra text, or formatting characters—just the final result in the format below.
 
                         # Instructions:
                         - Each number must be a decimal between 0 and 1
@@ -372,7 +440,6 @@ def extract_plant_water_requirement(conversation_messages):
         ]
     chat_messages.extend(conversation_messages)
     print("Extracting attributes with conversation history...")
-    print("Conversation messages:", chat_messages)
     response = client.chat.completions.create(
         model=completion_model,
         messages=chat_messages,
@@ -531,8 +598,10 @@ Your task is to generate a detailed, vivid, and spatially accurate prompt for an
 - Use concise, visual language. Do not include any explanation or extra text—just the prompt.
 - The prompt should be a single paragraph, max 120 words.
 
+DO NOT add any additional information or context outside the provided data.
+
 # Example Output:
-A sunlit courtyard with a central calm area (grid 10,10), social zones to the south (grids 5,5 to 5,10), permeable garden beds along the east edge, and a cluster of oak and maple trees (grids 12,12 and 13,13). Flower beds with lavender and daffodil line the paths. Benches and permeable paving create a welcoming, sustainable space. The design integrates biodiversity, health, and social interaction, with a mix of brick, wood, and green foliage.
+A sunlit courtyard with a central calm area (grid 10,10), social zones to the south (grids 5,5 to 5,10), permeable garden beds along the east edge where the area is colored pink, and a cluster of oak and maple trees (grids 12,12 and 13,13). Flower beds with lavender and daffodil line the paths, which are a grey. Benches and permeable paving are colored brown and create a welcoming, sustainable space. The design integrates biodiversity, health, and social interaction, with a mix of brick, wood, and green foliage.
 """
 
     messages = [

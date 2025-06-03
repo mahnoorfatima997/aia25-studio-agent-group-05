@@ -24,10 +24,17 @@ def llm_call_extract_attributes():
     attributes_conversation = data.get('conversation')
     attributes = extract_attributes_with_conversation(attributes_conversation)
     print("Received attributes:", attributes)
-    try:
-        attributes_json = json.loads(attributes)
-    except json.JSONDecodeError as e:
-        print(f"Failed to parse attributes JSON: {e}")
+    # Robustly extract the first valid JSON object from the LLM output
+    import re
+    match = re.search(r'\{.*\}', attributes, re.DOTALL)
+    if match:
+        try:
+            attributes_json = json.loads(match.group(0))
+        except Exception as e:
+            print(f"Failed to parse attributes JSON: {e}")
+            attributes_json = {}
+    else:
+        print("No JSON found in attributes output.")
         attributes_json = {}
     return jsonify({
         "attributes": attributes_json
@@ -43,11 +50,39 @@ def llm_call_generate_connections_targets():
             "error": "Conversation must be a list of message dicts."
         }), 400
     # Get connections
-    connections = extract_connections_with_conversation(conversation)
+    raw_connections = extract_connections_with_conversation(conversation)
+    # Robustly extract the first valid JSON object from the LLM output if needed
+    if isinstance(raw_connections, str):
+        match = re.search(r'\{.*\}', raw_connections, re.DOTALL)
+        print("match", match)
+        if match:
+            try:
+                connections = json.loads(match.group(0)).get("connections", [])
+            except Exception as e:
+                print(f"Failed to parse connections JSON: {e}")
+                connections = []
+        else:
+            print("No JSON found in connections output.")
+            connections = []
+    else:
+        connections = raw_connections
     print("Received connections:", connections)
     num_zones = len(connections)
     # Get targets (ensure same number as connections)
-    targets = extract_targets_with_conversation(conversation, num_zones=num_zones)
+    raw_targets = extract_targets_with_conversation(conversation, num_zones=num_zones)
+    if isinstance(raw_targets, str):
+        match = re.search(r'\{.*\}', raw_targets, re.DOTALL)
+        if match:
+            try:
+                targets = json.loads(match.group(0)).get("targets", [])
+            except Exception as e:
+                print(f"Failed to parse targets JSON: {e}")
+                targets = []
+        else:
+            print("No JSON found in targets output.")
+            targets = []
+    else:
+        targets = raw_targets
     print("Received targets:", targets)
     return jsonify({
         "connections": connections,
@@ -59,10 +94,25 @@ def llm_call_generate_spaces():
     data = request.get_json()
     space_conversation = data.get('conversation')
     print("Received user input:", space_conversation)
-    
+
     generated_space = extract_spaces_with_conversation(space_conversation)
+    # Robustly extract the first valid JSON object from the LLM output
+    if isinstance(generated_space, str):
+        match = re.search(r'\{.*\}', generated_space, re.DOTALL)
+        if match:
+            try:
+                spaces = json.loads(match.group(0)).get("spaces", [])
+            except Exception as e:
+                print(f"Failed to parse spaces JSON: {e}")
+                spaces = []
+        else:
+            print("No JSON found in spaces output.")
+            spaces = []
+    else:
+        spaces = generated_space
+    print("Received spaces:", spaces)
     return jsonify({
-        "spaces": generated_space
+        "spaces": spaces
     })
 
 @app.route('/llm_call/generate_tree_types', methods=['POST'])
