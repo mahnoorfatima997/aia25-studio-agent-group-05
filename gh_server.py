@@ -91,8 +91,6 @@ def generate_courtyard_graph():
 # <img src="data:image/png;base64,{{ graph_image }}" /> for use in ui
 
 
-
-
 def run_flask():
     app.run(debug=False, use_reloader=False)  # Run Flask server in a separate thread
 

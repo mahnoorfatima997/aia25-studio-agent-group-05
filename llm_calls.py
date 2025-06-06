@@ -514,12 +514,11 @@ def extract_anchors(conversation_messages):
     print("Response from LLM:", response.choices[0].message.content)
     return response.choices[0].message.content
 
-def extract_weights(conversation_messages):
+def assemble_courtyard_graph(spaces, external_functions, weights, anchors, positions, links):
     chat_messages = [
         {
             "role": "system",
             "content": """
-
                 You are a spatial graph assembly assistant for courtyard design.
 
                 Given:
@@ -553,40 +552,23 @@ def extract_weights(conversation_messages):
 
                 Only use the provided data. Do not invent or assume any values. Output only the JSON object, nothing else.
                 """
-            },
-        ]
-    chat_messages.extend(conversation_messages)
-    print("Extracting locations with conversation history...")
+        },
+        {
+            "role": "user",
+            "content": f"""
+spaces = {spaces}
+external_functions = {external_functions}
+weights = {weights}
+anchors = {anchors}
+positions = {positions}
+links = {links}
+"""
+        }
+    ]
     response = client.chat.completions.create(
         model=completion_model,
-        messages=chat_messages,
-        response_format=
-                {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "weights",
-                        "description": "Extracted weights for spatial zones in courtyard design",
-                        "strict": True,
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "weights": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "array",
-                                        "items": {"type": "integer"},
-                                        "minItems": 2,
-                                        "maxItems": 2
-                                    }
-                                }
-                            },
-                            "required": ["weights"]
-                        }
-                    }
-                }
+        messages=chat_messages
     )
-
-    print("Response from LLM:", response.choices[0].message.content)
     return response.choices[0].message.content
 
 
