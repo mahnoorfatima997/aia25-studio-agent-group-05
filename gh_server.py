@@ -56,6 +56,21 @@ def handle_external_functions():
             return jsonify({"error": "No functions available. Please call POST first."})
         else:
             return jsonify({"external_functions": external_functions})
+        
+
+@app.route('/spaces', methods=['POST', 'GET'])
+def handle_generated_spaces():
+    global generated_spaces
+    if request.method == 'POST':
+        data = request.get_json()
+        generated_spaces = data.get('spaces', [])
+        print("Received spaces from UI:", generated_spaces)
+        return jsonify({"status": "Spaces updated successfully."})
+    elif request.method == 'GET':
+        if generated_spaces is None:
+            return jsonify({"error": "No spaces available. Please call POST first."})
+        else:
+            return jsonify({"spaces_generated": generated_spaces})
     
 
 @app.route('/graph/generate_courtyard_graph', methods=['POST'])

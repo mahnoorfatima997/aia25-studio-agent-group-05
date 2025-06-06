@@ -77,7 +77,80 @@ def generate_concept_with_conversation(conversation_messages):
     )
     return response.choices[0].message.content
 
-def extract_connections_with_conversation(conversation_messages):
+def extract_spaces_with_conversation(conversation_messages):
+    chat_messages = [
+            {
+                "role": "system",
+                "content": """
+
+                        You are a spatial functions extraction assistant.
+
+                        Your task is to read a landscape or architecture design description and each of the different categorical types of spaces, even if the spaces are not explicitly mentioned. 
+
+                        You must then identify the locations of these spaces and estimate the grid points where they are located based on the description.
+
+                        # Output Format:
+                        Return a JSON object with a single key `spaces`, whose value is an object with the following keys:
+                        - play: grid point based on proximity matrix developed in concept description (integer)
+                        - rest: grid point based on proximity matrix developed in concept description (integer)
+                        - pond: grid point based on proximity matrix developed in concept description (integer)
+                        - flower: grid point based on proximity matrix developed in concept description (integer)
+                        - tree: grid point based on proximity matrix developed in concept description (integer)
+
+                        # Instructions:
+                        - Each key must be a **concise, lowercase space type** (e.g., "play", "rest", "pond", "flower", "tree").
+                        - Use clues like 'calm spaces', 'socio-relaxation zones', 'tree count', 'courtyard', 'native species', etc. to infer relevant areas.
+                        - Do NOT include textual descriptions.
+                        - Use whole numbers (no decimals).
+                        - If no information is available, omit assigning a number to that category.
+
+                        # Example Output:
+                        {
+                        "play": 1,
+                        "rest": 3,
+                        "pond": 5,
+                        "flower": 7,
+                        "tree": 9
+                        }
+                        """,
+            },
+        ]
+    chat_messages.extend(conversation_messages)
+    print("Extracting attributes with conversation history...")
+    print("Conversation messages:", chat_messages)
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=chat_messages,
+        temperature=0.2,
+        response_format = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "spaces",
+                    "description": "Extracted spaces and features from the design description",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "spaces": {
+                                "type": "object",
+                                "properties": {
+                                    "play": {"type": "integer"},
+                                    "rest": {"type": "integer"},
+                                    "pond": {"type": "integer"},
+                                    "flower": {"type": "integer"},
+                                    "tree": {"type": "integer"}
+                                },
+                                "required": ["play", "rest", "pond", "flower", "tree"]
+                            }
+                        },
+                        "required": ["spaces"]
+                    }
+                }
+            }
+    )
+    return response.choices[0].message.content
+
+def extract_links(conversation_messages):
     chat_messages = [
         {
             "role": "system",
@@ -204,115 +277,6 @@ def extract_external_functions(conversation_messages):
     print("Response from LLM:", response.choices[0].message.content)
     return response.choices[0].message.content
 
-def extract_targets_with_conversation(conversation_messages, num_zones=None):
-    chat_messages = [
-        {
-            "role": "system",
-            "content": """
-
-                You are assisting in the spatial design of a courtyard.
-
-                The user has already provided a design concept, extracted spatial attributes, and a list of functional zones with inferred adjacency relationships earlier in this conversation. The courtyard is divided into discrete numbered cells.
-
-                From this information, your task is to:
-
-                Assign each functional zone from the list to a specific cell number in the courtyard based on:
-
-                1. Spatial logic from the adjacency relationships (e.g., adjacent zones should be placed in neighboring or strategically close cells)
-                2. Design intent (from the concept)
-                3. Environmental considerations (e.g., calm zones oriented to shaded or enclosed areas; active zones to open or sunny areas)
-                4. General spatial planning principles (e.g., entries near entrances, buffers between conflicting functions)
-
-                Important Notes:
-
-                1. You are not generating geometry or visual layout.
-                2. You are assigning zone indices to cell numbers based on the best spatial fit inferred from context and adjacency.
-                3. You may assume the courtyard cell numbers are provided in a numbered grid and you have freedom to assign any zone to any cell.
-                4. Each zone index should be mapped to a single unique cell number.
-
-                Output Instructions:
-                Output only a JSON array of index-cell pairs, where each pair [a, b] means the zone at index a should be placed at cell b in the courtyard.\nYour array should match the order of the zone list inferred from the previous step.\nDo not include any explanation, text, or metadata — just the final result in the format below:
-                
-                **Example Output:**
-                {\"targets\": [[0, 2], [1, 3], [4, 5]]}""",
-            },
-        ]
-    chat_messages.extend(conversation_messages)
-    print("Extracting locations with conversation history...")
-    response = client.chat.completions.create(
-        model=completion_model,
-        messages=chat_messages,
-        response_format=
-                {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "targets",
-                        "description": "Extracted zone-to-grid assignments for courtyard design",
-                        "strict": True,
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "targets": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "array",
-                                        "items": {"type": "integer"},
-                                        "minItems": 2,
-                                        "maxItems": 2
-                                    }
-                                }
-                            },
-                            "required": ["targets"]
-                        }
-                    }
-                }
-    )
-
-    print("Response from LLM:", response.choices[0].message.content)
-    return response.choices[0].message.content
-
-
-def generate_casestudies(message):
-    response = client.chat.completions.create(
-        model=completion_model,
-        messages=[
-            {
-                "role": "system",
-                "content": """
-                        Based on the user's courtyard design intent, identify one or two case studies that are most relevant.
-
-                        The case studies must relate specifically to the courtyard’s key goals and features, such as:
-                        - Social interaction
-                        - Child-friendly design
-                        - Elderly comfort
-                        - Biodiversity
-                        - Health and well-being
-                        - Calm or quiet zones
-                        - Flower planting
-                        - Tree placement and species diversity
-                        - Open space quality
-                        - Permeability
-                        - Design integration
-
-                        Only select case studies that closely match the user’s priorities and spatial strategies.
-
-                        For each case study, provide:
-                        - The name and location
-                        - A **short paragraph** describing the courtyard design and why it is relevant
-
-                        Respond with no more than two case studies. Do not include explanations or general commentary outside the case study descriptions.
-
-                        """,
-            },
-            {
-                "role": "user",
-                "content": f"""
-                        {message}
-                        """,
-            },
-        ],
-    )
-    return response.choices[0].message.content
 
 def extract_attributes_with_conversation(conversation_messages):
     chat_messages = [
@@ -374,77 +338,257 @@ def extract_attributes_with_conversation(conversation_messages):
     )
     return response.choices[0].message.content
 
-def extract_spaces_with_conversation(conversation_messages):
+def extract_cardinal_directions(conversation_messages):
     chat_messages = [
-            {
-                "role": "system",
-                "content": """
+        {
+            "role": "system",
+            "content": """
 
-                        You are a spatial functions extraction assistant.
+                You are assisting in the spatial design of a courtyard.
 
-                        Your task is to read a landscape or architecture design description and **infer the relative distribution** of different types of spaces, even if the percentages are not explicitly mentioned.
+                The user has already provided a design concept, extracted spatial attributes, a list of functional zones with inferred adjacency relationships, and external functions earlier in this conversation. 
 
-                        # Output Format:
-                        Return a JSON object with a single key `spaces`, whose value is an object with the following keys:
-                        - play: percentage of total area used for children’s play (integer)
-                        - rest: percentage for social and relaxation areas (integer)
-                        - pond: percentage for water bodies (integer)
-                        - flower: percentage for flower beds or types of flowers (integer)
-                        - tree: percentage for trees or wooded areas (integer)
+                From this information, your task is to:
 
-                        # Instructions:
-                        - Carefully interpret the text to estimate how much of the space is likely used for each function.
-                        - Use clues like 'calm spaces', 'socio-relaxation zones', 'tree count', 'courtyard', 'native species', etc. to infer relevant percentages.
-                        - Do NOT include textual descriptions. Only output numbers in percentage format.
-                        - All five values must sum up to 100 (use your best judgment).
-                        - Use whole numbers (no decimals).
-                        - If no information is available, assign 0 to that category.
-
-                        # Example Output:
-                        {
-                        "play": 10,
-                        "rest": 30,
-                        "pond": 5,
-                        "flower": 15,
-                        "tree": 40
-                        }
-                        """,
+                Assign to the functional zones a N, S, E, or W cardinal direction based on their inferred location in the courtyard grid. This will help determine the orientation of each zone for optimal sunlight, wind, and environmental conditions.
+                Not all the functions need cardinal directions, only some need to be oriented and anchored to a specific direction based on their function and the design intent.
+:
+                
+                **Example Output:**
+                {\"directions\": [[tree, N], [play, S]]}""",
             },
         ]
     chat_messages.extend(conversation_messages)
-    print("Extracting attributes with conversation history...")
-    print("Conversation messages:", chat_messages)
+    print("Extracting locations with conversation history...")
     response = client.chat.completions.create(
         model=completion_model,
         messages=chat_messages,
-        temperature=0.2,
-        response_format = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "spaces",
-                    "description": "Extracted spaces and features from the design description",
-                    "strict": True,
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "spaces": {
-                                "type": "object",
-                                "properties": {
-                                    "play": {"type": "integer"},
-                                    "rest": {"type": "integer"},
-                                    "pond": {"type": "integer"},
-                                    "flower": {"type": "integer"},
-                                    "tree": {"type": "integer"}
-                                },
-                                "required": ["play", "rest", "pond", "flower", "tree"]
-                            }
-                        },
-                        "required": ["spaces"]
+        response_format=
+                {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "directions",
+                        "description": "Extracted cardinal directions for functional zones in courtyard design",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "directions": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "array",
+                                        "items": {"type": "integer"},
+                                        "minItems": 2,
+                                        "maxItems": 2
+                                    }
+                                }
+                            },
+                            "required": ["directions"]
+                        }
                     }
                 }
-            }
     )
+
+    print("Response from LLM:", response.choices[0].message.content)
     return response.choices[0].message.content
+
+
+def extract_weights(conversation_messages):
+    chat_messages = [
+        {
+            "role": "system",
+            "content": """
+
+                You are assisting in the spatial design of a courtyard.
+
+                The user has already provided a design concept, extracted spatial attributes, and a list of functional zones with inferred adjacency relationships earlier in this conversation. The courtyard is divided into discrete numbered cells.
+
+                From this information, your task is to:
+
+                Assign each functional zone and spatial attribute from the extracted attributes a specific weight in the courtyard based on how important it is to the overall design and functionality of the space. The weights should reflect the priority or significance of each zone in relation to the others.
+                The weights should be integers between 1 and 10, where the importance of the zone can be inferred from:
+
+                1. Spatial logic from the adjacency relationships (e.g., adjacent zones should be placed in neighboring or strategically close cells)
+                2. Design intent (from the concept)
+                3. Environmental considerations (e.g., calm zones oriented to shaded or enclosed areas; active zones to open or sunny areas)
+                4. General spatial planning principles (e.g., entries near entrances, buffers between conflicting functions)
+
+                Important Notes:
+
+                1. You are not generating geometry or visual layout.
+                2. You are assigning weights to each functional zone based on its significance in the courtyard design.
+                3. The weights must lie between 1 and 10, with higher weights indicating greater importance.
+
+                Output Instructions:
+                Output only a JSON array of index-cell pairs, where each pair [a, b] means the zone at index a should have a weight placed at b.
+                Your array should match the functions and zones inferred from the previous steps.
+                Do not include any explanation, text, or metadata — just the final result in the format below:
+                
+                **Example Output:**
+                {\"weights\": [[tree, 2], [pond, 4], [kindergarden, 8], [yoga, 3]]}""",
+            },
+        ]
+    chat_messages.extend(conversation_messages)
+    print("Extracting locations with conversation history...")
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=chat_messages,
+        response_format=
+                {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "weights",
+                        "description": "Extracted weights for spatial zones in courtyard design",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "weights": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "array",
+                                        "items": {"type": "integer"},
+                                        "minItems": 2,
+                                        "maxItems": 2
+                                    }
+                                }
+                            },
+                            "required": ["weights"]
+                        }
+                    }
+                }
+    )
+
+    print("Response from LLM:", response.choices[0].message.content)
+    return response.choices[0].message.content
+
+def extract_anchors(conversation_messages):
+    chat_messages = [
+        {
+            "role": "system",
+            "content": """
+
+                You are assisting in the spatial design of a courtyard.
+
+                The user has already provided a design concept, extracted spatial attributes, and a list of functional zones with inferred adjacency relationships earlier in this conversation. The courtyard is divided into discrete numbered cells.
+
+                From this information, your task is to:
+
+                Assign which function zones should be anchored and which should not be. Provide your output in the form of true/false.
+                
+                **Example Output:**
+                {\"anchors\": [[tree, true], [pond, true], [kindergarden, false], [yoga, false]]}""",
+            },
+        ]
+    chat_messages.extend(conversation_messages)
+    print("Extracting locations with conversation history...")
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=chat_messages,
+        response_format=
+                {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "anchors",
+                        "description": "Extracted anchors for spatial zones in courtyard design",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "anchors": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "array",
+                                        "items": {"type": "integer"},
+                                        "minItems": 2,
+                                        "maxItems": 2
+                                    }
+                                }
+                            },
+                            "required": ["anchors"]
+                        }
+                    }
+                }
+    )
+
+    print("Response from LLM:", response.choices[0].message.content)
+    return response.choices[0].message.content
+
+def extract_weights(conversation_messages):
+    chat_messages = [
+        {
+            "role": "system",
+            "content": """
+
+                You are a spatial graph assembly assistant for courtyard design.
+
+                Given:
+                - A list of internal spaces: {spaces}
+                - A list of external functions: {external_functions}
+                - A dictionary of weights for each node: {weights}
+                - A list of anchor node names: {anchors}
+                - A dictionary of positions for each node: {positions}
+                - A list of links (edges) as [source, target] pairs: {links}
+
+                Your task is to output a single JSON object with the following structure:
+
+                {
+                "directed": false,
+                "multigraph": false,
+                "graph": {},
+                "nodes": [
+                    {
+                    "id": "node_name",
+                    "pos": {"x": ..., "y": ..., "z": ...},
+                    "weight": ...,
+                    "anchor": true/false
+                    },
+                    ...
+                ],
+                "links": [
+                    {"source": "node_name", "target": "node_name"},
+                    ...
+                ]
+                }
+
+                Only use the provided data. Do not invent or assume any values. Output only the JSON object, nothing else.
+                """
+            },
+        ]
+    chat_messages.extend(conversation_messages)
+    print("Extracting locations with conversation history...")
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=chat_messages,
+        response_format=
+                {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "weights",
+                        "description": "Extracted weights for spatial zones in courtyard design",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "weights": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "array",
+                                        "items": {"type": "integer"},
+                                        "minItems": 2,
+                                        "maxItems": 2
+                                    }
+                                }
+                            },
+                            "required": ["weights"]
+                        }
+                    }
+                }
+    )
+
+    print("Response from LLM:", response.choices[0].message.content)
+    return response.choices[0].message.content
+
 
 # def extract_tree_types(conversation_messages):
 #     chat_messages = [
