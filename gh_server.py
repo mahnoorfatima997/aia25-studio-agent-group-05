@@ -71,6 +71,22 @@ def handle_generated_spaces():
             return jsonify({"error": "No spaces available. Please call POST first."})
         else:
             return jsonify({"spaces_generated": generated_spaces})
+        
+
+
+@app.route('/geometry_data', methods=['POST', 'GET'])
+def handle_geometry_data():
+    global geometry_data
+    if request.method == 'POST':
+        data = request.get_json()
+        geometry_data = data.get('geometry_data', [])
+        print("Received spaces from UI:", geometry_data)
+        return jsonify({"status": "Spaces updated successfully."})
+    elif request.method == 'GET':
+        if geometry_data is None:
+            return jsonify({"error": "No geometry_data available. Please call POST first."})
+        else:
+            return jsonify({"geometry_data": geometry_data})
     
 
 @app.route('/graph/generate_courtyard_graph', methods=['POST'])
