@@ -7,6 +7,7 @@ with open("knowledge/merged.json", "r") as file:
 # # Convert the JSON data to a string
 json_data_str = json.dumps(json_data)
 
+
 def classify_input(message):
     response = client.chat.completions.create(
         model=completion_model,
@@ -104,7 +105,7 @@ def extract_connections_with_conversation(conversation_messages):
                 Do not include any explanation, text, or metadata — just the final result in the format below:
 
                 **Example Output:**
-                {\"connections\": [[0, 2], [1, 3], [4, 5]]}
+                {\"connections\": [[tree, pond], [tree, flower], [play, rest]]}
                         """,
             },
         ]
@@ -138,6 +139,68 @@ def extract_connections_with_conversation(conversation_messages):
                     }
                 }
     )
+    print("Response from LLM:", response.choices[0].message.content)
+    return response.choices[0].message.content
+
+def extract_external_functions(conversation_messages):
+    chat_messages = [
+        {
+            "role": "system",
+            "content": """
+
+                You are assisting in the spatial design of a courtyard.
+
+                The user will provide a set of functions that are external to the courtyard design. Your task is to identify ONLY the external functions explicitly mentioned by the user and arrange them in a JSON.
+
+                Do NOT include any courtyard functions or zones in this list. Do NOT add any default or assumed functions. Do NOT include explanations or extra information.
+
+                # Output Instructions:
+                Output only a JSON object with a single key "external_functions", whose value is a list of [index, name] pairs, where index is a unique integer (starting from 1) and name is the external function as a string.
+
+                # Example Output:
+                {
+                "external_functions": [
+                    [1, "yoga"],
+                    [2, "school"]
+                ]
+                }
+                """
+            },
+        ]
+    chat_messages.extend(conversation_messages)
+    print("Extracting locations with conversation history...")
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=chat_messages,
+        response_format=
+                {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "external_functions",
+                        "description": "Extracted external functions for courtyard design",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "external_functions": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "array",
+                                        "items": [
+                                            {"type": "integer"},
+                                            {"type": "string"}
+                                        ],
+                                        "minItems": 2,
+                                        "maxItems": 2
+                                    }
+                                }
+                            },
+                            "required": ["external_functions"]
+                        }
+                    }
+                }
+    )
+
     print("Response from LLM:", response.choices[0].message.content)
     return response.choices[0].message.content
 
@@ -615,4 +678,32 @@ A sunlit courtyard with a central calm area (grid 10,10), social zones to the so
     return response.choices[0].message.content
 
 
+def route_query_to_function(phase: str, conversation_history=None):
+    """
+    Routes a user message to the appropriate LLM function based on intent.
+    Optionally takes conversation_history for context.
+    """
 
+    # Example routing logic (customize as needed)
+    if phase == "concept":
+        # Generate a concept
+        return generate_concept_with_conversation(conversation_history)
+    
+    elif phase == "functions":
+        return extract_external_functions(conversation_history)
+    
+    elif phase == "attributes":
+        return extract_attributes_with_conversation(conversation_history)
+    
+    else:
+        print(f"Unknown phase: {phase}")
+
+
+    # else:
+    #     # Default: classify if it's architectural
+    #     classification = classify_input(message)
+    #     if "refuse" in classification.lower():
+    #         return "Sorry, I can only answer questions about architecture."
+    #     else:
+    #         # Fallback: try to generate a concept
+    #         return generate_concept_with_conversation([{"role": "user", "content": message}])
