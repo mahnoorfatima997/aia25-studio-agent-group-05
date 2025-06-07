@@ -18,7 +18,8 @@ app = Flask(__name__)
 
 area = None
 external_functions = None
-
+generated_spaces = None
+geometry_data = None
 
 @app.route('/plot_area', methods=['GET', 'POST'])
 def get_plot_area():
@@ -89,20 +90,20 @@ def handle_geometry_data():
             return jsonify({"geometry_data": geometry_data})
     
 
-@app.route('/graph/generate_courtyard_graph', methods=['POST'])
-def generate_courtyard_graph():
-    data = request.get_json()
-    print("Received graph data:", data)
+# @app.route('/graph/generate_courtyard_graph', methods=['POST'])
+# def generate_courtyard_graph():
+#     data = request.get_json()
+#     print("Received graph data:", data)
 
-    # Generate the graph image and get the file path
-    output_path = "static/network_graph.png"  # or any path you prefer
-    generate_network_graph(data, output_path=output_path)
+#     # Generate the graph image and get the file path
+#     output_path = "static/network_graph.png"  # or any path you prefer
+#     generate_network_graph(data, output_path=output_path)
 
-    # Read the image and encode as base64 for UI embedding
-    with open(output_path, "rb") as img_file:
-        img_base64 = base64.b64encode(img_file.read()).decode('utf-8')
+#     # Read the image and encode as base64 for UI embedding
+#     with open(output_path, "rb") as img_file:
+#         img_base64 = base64.b64encode(img_file.read()).decode('utf-8')
 
-    return jsonify({"graph_image": img_base64})
+#     return jsonify({"graph_image": img_base64})
 
 # <img src="data:image/png;base64,{{ graph_image }}" /> for use in ui
 
