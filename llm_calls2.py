@@ -392,6 +392,64 @@ def extract_cardinal_directions(conversation_messages):
     return response.choices[0].message.content
 
 
+def extract_positions(conversation_messages):
+    chat_messages = [
+        {
+            "role": "system",
+            "content": """
+
+                You are assisting in the spatial design of a courtyard.
+
+                The user has already provided a design concept, extracted spatial attributes, a list of functional zones with inferred adjacency relationships, and external functions earlier in this conversation. 
+
+                From this information, your task is to:
+
+                Assign relationships between the functional zones in the courtyard and the external functions based on their inferred location in the courtyard grid. This will help determine the orientation of each zone for optimal sunlight, wind, and environmental conditions.
+                You must determine which zones should be connected or adjacent, based on:
+                1. Design intent (from the concept)
+                2. Functional needs or compatibility (from the attributes)
+                3. General principles of spatial planning (e.g., gathering zones may connect to social zones, calm areas may avoid noisy zones)
+                You are not placing zones spatially. You are only identifying logical adjacency relationships.
+:
+                
+                **Example Output:**
+                {\"directions\": [[cafe, tree], [library, flower]]}""",
+            },
+        ]
+    chat_messages.extend(conversation_messages)
+    print("Extracting locations with conversation history...")
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=chat_messages,
+        response_format=
+                {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "positions",
+                        "description": "Extracted adjacency relationships between functional zones and external functions in courtyard design",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "positions": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "array",
+                                        "items": {"type": "integer"},
+                                        "minItems": 2,
+                                        "maxItems": 2
+                                    }
+                                }
+                            },
+                            "required": ["positions"]
+                        }
+                    }
+                }
+    )
+
+    print("Response from LLM:", response.choices[0].message.content)
+    return response.choices[0].message.content
+
 def extract_weights(conversation_messages):
     chat_messages = [
         {
