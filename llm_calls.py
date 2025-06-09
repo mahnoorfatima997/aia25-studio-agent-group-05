@@ -61,6 +61,8 @@ def generate_concept_with_conversation(conversation_messages):
                         Where:
                         - `{area_descriptions}` is a list of all area types (e.g., social, calm, permeable, garden) and their sizes (e.g., "20 sqm of social zones, 15 sqm of calm spaces").
 
+                        Also develop a spatial matrix in the form of numbered relationships between the various areas and functions, assigning a grid point to each area based on its proximity to other areas. Be sure to include tree, play, rest, pond and flower as zones defining the courtyard division.
+
                         Only use the attributes provided in the JSON. Do not assume or fabricate additional ones. Do not include explanations or extra information.
                         """,
             },
@@ -77,7 +79,7 @@ def generate_concept_with_conversation(conversation_messages):
     return response.choices[0].message.content
 
 
-def extract_spaces(concept, extracted_functions, attributes):
+def extract_spaces(concept, external_functions, attributes):
     chat_messages = [
             {
                 "role": "system",
@@ -85,12 +87,12 @@ def extract_spaces(concept, extracted_functions, attributes):
 
                         You are a spatial functions extraction assistant.
 
-                        Your task is to read a landscape or architecture design description and each of the different categorical types of spaces, even if the spaces are not explicitly mentioned. 
+                        Your task is to read the concept and attributes.
 
                         You must then identify the locations of these spaces and estimate the grid points where they are located based on the description.
 
                         # Output Format:
-                        Return a JSON object with a single key `spaces`, whose value is an object with the following keys:
+                        Return a JSON object, whose value is an object with the following keys:
                         - play: grid point based on proximity matrix developed in concept description (integer)
                         - rest: grid point based on proximity matrix developed in concept description (integer)
                         - pond: grid point based on proximity matrix developed in concept description (integer)
@@ -99,7 +101,6 @@ def extract_spaces(concept, extracted_functions, attributes):
 
                         # Instructions:
                         - Each key must be a **concise, lowercase space type** (e.g., "play", "rest", "pond", "flower", "tree").
-                        - Use clues like 'calm spaces', 'socio-relaxation zones', 'tree count', 'courtyard', 'native species', etc. to infer relevant areas.
                         - Do NOT include textual descriptions.
                         - Use whole numbers (no decimals).
                         - If no information is available, omit assigning a number to that category.
@@ -113,6 +114,9 @@ def extract_spaces(concept, extracted_functions, attributes):
                             "flower": 7,
                             "tree": 9
                         }
+                        }
+
+                        You must include all 5 areas in every answer. If one of the areas does not have a number, you will enter a 0 next to it.
                         """,
             },
         ]
@@ -120,11 +124,11 @@ def extract_spaces(concept, extracted_functions, attributes):
     "role": "user",
     "content": """
         Concept: {concept}
-        Extracted Functions: {extracted_functions}
+        Extracted Functions: {external_functions}
         Attributes: {attributes}
     """.format(
         concept=concept,
-        extracted_functions=extracted_functions,
+        external_functions=external_functions,
         attributes=attributes
     )
     })
@@ -133,33 +137,35 @@ def extract_spaces(concept, extracted_functions, attributes):
     response = client.chat.completions.create(
         model=completion_model,
         messages=chat_messages,
-        temperature=0.2,
         response_format = {
                 "type": "json_schema",
                 "json_schema": {
                     "name": "spaces",
                     "description": "Extracted spaces and features from the design description",
-                    "strict": True,
                     "schema": {
                         "type": "object",
                         "properties": {
                             "spaces": {
                                 "type": "object",
                                 "properties": {
-                                    "play": {"type": "integer"},
-                                    "rest": {"type": "integer"},
-                                    "pond": {"type": "integer"},
-                                    "flower": {"type": "integer"},
-                                    "tree": {"type": "integer"}
-                                },
-                                "required": ["play", "rest", "pond", "flower", "tree"]
-                            }
+                                        "play": {"type": "integer"},
+                                        "rest": {"type": "integer"},
+                                        "pond": {"type": "integer"},
+                                        "flower": {"type": "integer"},
+                                        "tree": {"type": "integer"},
+                                    },
+                                    "required": ["play", "rest", "pond", "flower", "tree"],
+                                    "additionalProperties": False,
+                                }
+                            },
+                            "required": ["spaces"],
+                            "additionalProperties": False,
                         },
-                        "required": ["spaces"]
+                        
                     }
                 }
-            }
     )
+    print("Response from LLM for spaces:", response.choices[0].message.content)
     return response.choices[0].message.content
 
 def extract_links(concept):
@@ -192,7 +198,11 @@ def extract_links(concept):
                 Do not include any explanation, text, or metadata — just the final result in the format below:
 
                 **Example Output:**
-                {\"connections\": [[tree, pond], [tree, flower], [play, rest]]}
+                {"links": {
+                "tree": "pond", "tree": "flower", "play": "rest"}
+                }
+
+                ONLY make links between these areas. Do not make links with other attributes/zones.
                         """,
             },
         ]
@@ -210,29 +220,45 @@ def extract_links(concept):
         messages=chat_messages,
         response_format=
                 {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "links",
-                        "description": "Extracted adjacency relationships between functional zones",
-                        "strict": True,
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "links": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "array",
-                                        "items": [
-                                            {"type": "string"},
-                                            {"type": "string"}
-                                        ],
-                                        "minItems": 2,
-                                        "maxItems": 2
-                                    }
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "links",
+                    "description": "Extracted links from the design description",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "links": {
+                                "type": "object",
+                                "properties": {
+                                        "tree": {
+                                            "type": "string",
+                                            "description": "Relates to a concept of tree, e.g., pond, flower."
+                                        },
+                                        "play": {
+                                            "type": "string",
+                                            "description": "Relates to the concept of play, e.g., rest."
+                                        },
+                                        "pond": {
+                                            "type": "string",
+                                            "description": "Relates to a concept of pond, e.g., tree, flower."
+                                        },
+                                        "flower": {
+                                            "type": "string",
+                                            "description": "Relates to a concept of flower, e.g., tree, rest."
+                                        },
+                                        "rest": {
+                                            "type": "string",
+                                            "description": "Relates to a concept of rest, e.g., flower, pond."
+                                        }
+                                        },
+                                    "required": ["play", "rest", "pond", "flower", "tree"],
+                                    "additionalProperties": False,
                                 }
                             },
-                            "required": ["links"]
-                        }
+                            "required": ["links"],
+                            "additionalProperties": False,
+                        },
+                        
                     }
                 }
     )
@@ -240,7 +266,7 @@ def extract_links(concept):
     return response.choices[0].message.content
 
 
-def extract_positions(concept, extracted_functions, attributes):
+def extract_positions(concept, external_functions):
     chat_messages = [
         {
             "role": "system",
@@ -248,7 +274,7 @@ def extract_positions(concept, extracted_functions, attributes):
 
                 You are assisting in the spatial design of a courtyard.
 
-                The user has already provided a design concept, extracted spatial attributes, a list of functional zones with inferred adjacency relationships, and external functions earlier in this conversation. 
+                The user has already provided a design concept, {external_functions}, a list of inferred adjacency relationships, and the courtyard zones: tree, pond, play, rest, flower. 
 
                 From this information, your task is to:
 
@@ -261,19 +287,22 @@ def extract_positions(concept, extracted_functions, attributes):
 :
                 
                 **Example Output:**
-                {\"directions\": [[cafe, tree], [library, flower]]}""",
+                {"positions": {"cafe": "tree", "library": "flower"}
+                }
+
+
+                Do not use any other punctuation such as hyphens. Only use colons to denote these relationships. Only use the zones in the extracted_functions list and attach them to our courtyard ones.
+                """,
             },
         ]
     chat_messages.append({
     "role": "user",
     "content": """
         Concept: {concept}
-        Extracted Functions: {extracted_functions}
-        Attributes: {attributes}
+        Extracted Functions: {external_functions}
     """.format(
         concept=concept,
-        extracted_functions=extracted_functions,
-        attributes=attributes
+        external_functions=external_functions,
     )
     })
     print("Extracting positions ...")
@@ -282,29 +311,27 @@ def extract_positions(concept, extracted_functions, attributes):
         messages=chat_messages,
         response_format=
                 {
-                    "type": "json_schema",
-                    "json_schema": {
+                "type": "json_schema",
+                    "json_schema":{
                         "name": "positions",
-                        "description": "Extracted adjacency relationships between functional zones and external functions in courtyard design",
-                        "strict": True,
                         "schema": {
                             "type": "object",
                             "properties": {
-                                "positions": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "array",
-                                        "items": [
-                                            {"type": "string"},
-                                            {"type": "string"}
-                                        ],
-                                        "minItems": 2,
-                                        "maxItems": 2
+                            "positions": {
+                                "type": "array",
+                                "description": "Relationships between external functions and courtyard zones.",
+                                "items": {
+                                    "type": "string", "type": "string",
+                                    "description": "Relationsips between external functions and courtyard zones."
                                     }
                                 }
                             },
-                            "required": ["positions"]
-                        }
+                            "required": [
+                            "positions"
+                            ],
+                            "additionalProperties": False
+                        },
+                        "strict": True
                     }
                 }
     )
@@ -325,57 +352,55 @@ def extract_external_functions(conversation_messages):
                 Do NOT include any courtyard functions or zones in this list. Do NOT add any default or assumed functions. Do NOT include explanations or extra information.
 
                 # Output Instructions:
-                Output only a JSON object with a single key "external_functions", whose value is a list of [index, name] pairs, where index is a unique integer (starting from 1) and name is the external function as a string.
+                Output only a JSON object with a single key "external_functions", whose value is a list.
 
                 # Example Output:
                 {
                 "external_functions": [
-                    [1, "yoga"],
-                    [2, "school"]
+                    "yoga", "school"
                 ]
                 }
                 """
             },
         ]
     chat_messages.extend(conversation_messages)
-    print("Extracting functions with conversation history...")
+    print("Extracting functions with conversation history...", chat_messages)
     response = client.chat.completions.create(
         model=completion_model,
         messages=chat_messages,
         response_format=
                 {
                     "type": "json_schema",
-                    "json_schema": {
+                    "json_schema":{
                         "name": "external_functions",
-                        "description": "Extracted external functions for courtyard design",
-                        "strict": True,
                         "schema": {
                             "type": "object",
                             "properties": {
-                                "external_functions": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "array",
-                                        "items": [
-                                            {"type": "integer"},
-                                            {"type": "string"}
-                                        ],
-                                        "minItems": 2,
-                                        "maxItems": 2
+                            "external_functions": {
+                                "type": "array",
+                                "description": "List of external functions.",
+                                "items": {
+                                    "type": "string",
+                                    "description": "The function name."
                                     }
                                 }
                             },
-                            "required": ["external_functions"]
-                        }
+                            "required": [
+                            "external_functions"
+                            ],
+                            "additionalProperties": False
+                        },
+                        "strict": True
                     }
                 }
     )
 
-    print("Response from LLM:", response.choices[0].message.content)
+    print("Response from LLM for external_functions:", response.choices[0].message.content)
     return response.choices[0].message.content
 
 
-def extract_attributes_with_conversation(conversation_messages):
+def extract_attributes_with_conversation(conversation_messages, concept):
+    print("EXTRACTING ATTRIBUTES FROM CONCEPT", concept)
     chat_messages = [
             {
                 "role": "system",
@@ -407,10 +432,17 @@ def extract_attributes_with_conversation(conversation_messages):
                         "path width": "2 meters",
                         "courtyard area": "35 sqm"
                         }
-
-                        """,
+                        """
             },
         ]
+    chat_messages.append({
+    "role": "user",
+    "content": """
+        Here is the concept: {concept}
+    """.format(
+        concept=concept,
+    )
+    })
     chat_messages.extend(conversation_messages)
     print("Extracting attributes with conversation history...")
     print("Conversation messages:", chat_messages)
@@ -422,20 +454,22 @@ def extract_attributes_with_conversation(conversation_messages):
                     "type": "json_schema",
                     "json_schema": {
                         "name": "attributes",
-                        "description": "Extracted design-related attributes from the text",
-                        "strict": True,
+                        "description": "Extracted design attributes from the concept description",
                         "schema": {
                             "type": "object",
+                            "properties": {},
+                            "description": "Attributes extracted from the courtyard design concept",
                             "additionalProperties": {
                                 "type": "string"
                             }
-                        }
+                        },
                     }
-                }
-    )
+                }  
+        )
+    print("Response from LLM for attributes:", response.choices[0].message.content)
     return response.choices[0].message.content
 
-def extract_cardinal_directions(concept, extracted_functions, attributes):
+def extract_cardinal_directions(concept, external_functions, attributes):
     chat_messages = [
         {
             "role": "system",
@@ -452,18 +486,23 @@ def extract_cardinal_directions(concept, extracted_functions, attributes):
 :
                 
                 **Example Output:**
-                {\"directions\": [[tree, N], [play, S]]}""",
+                {"directions": {
+                "tree": "N", "play": "S"}
+                }
+                
+                Do not assign the same cardinal direction to more than one zone. If there is no previous information provided, you must assign at least two directions to any of the zones.
+                """,
             },
         ]
     chat_messages.append({
     "role": "user",
     "content": """
         Concept: {concept}
-        Extracted Functions: {extracted_functions}
+        Extracted Functions: {external_functions}
         Attributes: {attributes}
     """.format(
         concept=concept,
-        extracted_functions=extracted_functions,
+        external_functions=external_functions,
         attributes=attributes
     )
     })
@@ -472,30 +511,28 @@ def extract_cardinal_directions(concept, extracted_functions, attributes):
         model=completion_model,
         messages=chat_messages,
         response_format=
-                {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "directions",
-                        "description": "Extracted cardinal directions for functional zones in courtyard design",
-                        "strict": True,
+        {
+                "type": "json_schema",
+                    "json_schema":{
+                        "name": "cardinal_directions",
                         "schema": {
                             "type": "object",
                             "properties": {
-                                "directions": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "array",
-                                        "items": [
-                                            {"type": "string"},
-                                            {"type": "string"}
-                                        ],
-                                        "minItems": 2,
-                                        "maxItems": 2
+                            "cardinal_directions": {
+                                "type": "array",
+                                "description": "List of cardinal directions attached to their functional zones.",
+                                "items": {
+                                    "type": "string", "type": "string",
+                                    "description": "Cardinal directions for spaces mentioned."
                                     }
                                 }
                             },
-                            "required": ["directions"]
-                        }
+                            "required": [
+                            "cardinal_directions"
+                            ],
+                            "additionalProperties": False
+                        },
+                        "strict": True
                     }
                 }
     )
@@ -504,7 +541,7 @@ def extract_cardinal_directions(concept, extracted_functions, attributes):
     return response.choices[0].message.content
 
 
-def extract_weights(concept, extracted_functions, attributes):
+def extract_weights(concept, external_functions, attributes):
     chat_messages = [
         {
             "role": "system",
@@ -529,6 +566,7 @@ def extract_weights(concept, extracted_functions, attributes):
                 1. You are not generating geometry or visual layout.
                 2. You are assigning weights to each functional zone based on its significance in the courtyard design.
                 3. The weights must lie between 1 and 10, with higher weights indicating greater importance.
+                4. DO NOT output null values. Always assign a number.
 
                 Output Instructions:
                 Output only a JSON array of index-cell pairs, where each pair [a, b] means the zone at index a should have a weight placed at b.
@@ -536,18 +574,22 @@ def extract_weights(concept, extracted_functions, attributes):
                 Do not include any explanation, text, or metadata — just the final result in the format below:
                 
                 **Example Output:**
-                {\"weights\": [[tree, 2], [pond, 4], [kindergarden, 8], [yoga, 3]]}""",
+                {"weights": { "tree": 2, "pond": 4, "kindergarden": 8, "yoga": 3} }
+
+
+                DO NOT use any other punctuation to denote relationships, only use the colon to show that.
+                """,
             },
         ]
     chat_messages.append({
     "role": "user",
     "content": """
         Concept: {concept}
-        Extracted Functions: {extracted_functions}
+        Extracted Functions: {external_functions}
         Attributes: {attributes}
     """.format(
         concept=concept,
-        extracted_functions=extracted_functions,
+        external_functions=external_functions,
         attributes=attributes
     )
     })
@@ -558,28 +600,35 @@ def extract_weights(concept, extracted_functions, attributes):
         response_format=
                 {
                     "type": "json_schema",
-                    "json_schema": {
-                        "name": "weights",
-                        "description": "Extracted weights for spatial zones in courtyard design",
-                        "strict": True,
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "weights": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "array",
-                                        "items": [
-                                            {"type": "string"},
-                                            {"type": "integer"}
-                                        ],
-                                        "minItems": 2,
-                                        "maxItems": 2
-                                    }
+                "json_schema": {
+                    "name": "weights",
+                    "description": "Extracted weights for functional zones in courtyard design",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "weights": {
+                                "type": "object",
+                                "properties": {
+                                        "play": {
+                                            "type": "integer",
+                                            "description": "Grid point for play in courtyard space"},
+                                        "rest": {"type": "integer",
+                                                 "description": "Grid point for rest in courtyard space"},
+                                        "pond": {"type": "integer",
+                                                 "description": "Grid point for pond in courtyard space"},
+                                        "flower": {"type": "integer",
+                                                   "description": "Grid point for flower in courtyard space"},
+                                        "tree": {"type": "integer",
+                                                 "description": "Grid point for tree in courtyard space"},
+                                    },
+                                    "required": ["play", "rest", "pond", "flower", "tree"],
+                                    "additionalProperties": False,
                                 }
                             },
-                            "required": ["weights"]
-                        }
+                            "required": ["weights"],
+                            "additionalProperties": False,
+                        },
+                        
                     }
                 }
     )
@@ -587,7 +636,7 @@ def extract_weights(concept, extracted_functions, attributes):
     print("Response from LLM:", response.choices[0].message.content)
     return response.choices[0].message.content
 
-def extract_anchors(concept, extracted_functions, attributes):
+def extract_anchors(concept, external_functions, attributes):
     chat_messages = [
         {
             "role": "system",
@@ -599,21 +648,26 @@ def extract_anchors(concept, extracted_functions, attributes):
 
                 From this information, your task is to:
 
+                Make a list of the {external_functions} provided by the user and the existing spaces (i.e tree, pond, flower, rest, play) generated for the courtyard.
+
                 Assign which function zones should be anchored and which should not be. Provide your output in the form of true/false.
                 
                 **Example Output:**
-                {\"anchors\": [[tree, true], [pond, true], [kindergarden, false], [yoga, false]]}""",
+                {"anchors": {"tree":, "true", "pond": "true", "kindergarden": "false", "yoga": "false"}}
+
+                DO NOT use any other spaces apart from the external_functions and the courtyard zones.
+                """,
             },
         ]
     chat_messages.append({
     "role": "user",
     "content": """
         Concept: {concept}
-        Extracted Functions: {extracted_functions}
+        Extracted Functions: {external_functions}
         Attributes: {attributes}
     """.format(
         concept=concept,
-        extracted_functions=extracted_functions,
+        external_functions=external_functions,
         attributes=attributes
     )
     })
@@ -626,34 +680,89 @@ def extract_anchors(concept, extracted_functions, attributes):
                     "type": "json_schema",
                     "json_schema": {
                         "name": "anchors",
-                        "description": "Extracted anchors for spatial zones in courtyard design",
-                        "strict": True,
+                        "description": "Boolean values showing which spaces/functions are anchors.",
+                        "schema": {
+                            "type": "object",
+                            "properties": {},
+                            "description": "Boolean values showing which spaces/functions are anchors.",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        },
+                    }
+                }  
+        )
+
+    print("Response from LLM:", response.choices[0].message.content)
+    return response.choices[0].message.content
+
+def extract_pos(concept, external_functions):
+    chat_messages = [
+        {
+            "role": "system",
+            "content": """
+
+                You are assisting in the spatial design of a courtyard.
+
+                The user has already provided enough information for you to extract.
+
+                Your task now is to make a list of the areas (pond, tree, flower, play, rest) and functions {external_functions} we are working with, and add to it a position on a 2D grid. You must consider all other information before deciding on the placement of each.
+
+                DO NOT output any extra information or text, only the JSON with the data. Make sure you add the external_functions as well as the courtyard areas.
+
+                #EXAMPLE OUTPUT
+
+                {"pos": {"tree": [1, 2], "yoga": [4, 9], "open": [2, 6]}}
+
+                Make sure you ALWAYS output positions. DO NOT include any extra data. ONLY output X and Y coordinates of functional zones and external functions.
+                DO NOT give null values. Always numbers.
+                """,
+            },
+        ]
+    chat_messages.append({
+    "role": "user",
+    "content": """
+        Concept: {concept}
+        Extracted Functions: {external_functions}
+    """.format(
+        concept=concept,
+        external_functions=external_functions,
+    )
+    })
+    print("Extracting pos...")
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=chat_messages,
+        response_format=
+                {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "position_schema",
                         "schema": {
                             "type": "object",
                             "properties": {
-                                "anchors": {
-                                    "type": "array",
-                                    "items": {
+                                "pos": {
+                                    "type": "object",
+                                    "description": "Mapping of zone/function names to [x, y] coordinates.",
+                                    "additionalProperties": {
                                         "type": "array",
-                                        "items": [
-                                            {"type": "string"},
-                                            {"type": "string"}
-                                        ],
+                                        "description": "Array of two numbers [x, y]",
+                                        "items": {"type": "number"},
                                         "minItems": 2,
                                         "maxItems": 2
                                     }
                                 }
                             },
-                            "required": ["anchors"]
+                            "required": ["pos"],
+                            "additionalProperties": False
                         }
-                    }
-                }
-    )
-
+                    },
+                })
     print("Response from LLM:", response.choices[0].message.content)
     return response.choices[0].message.content
 
-def assemble_courtyard_graph(spaces, external_functions, weights, anchors, positions, links, cardinal_directions):
+def assemble_courtyard_graph(spaces, external_functions, weights, anchors, positions, links, cardinal_directions, pos):
+    print("Assembling courtyard graph....")
     chat_messages = [
         {
             "role": "system",
@@ -666,6 +775,7 @@ def assemble_courtyard_graph(spaces, external_functions, weights, anchors, posit
                 - A dictionary of weights for each node: {weights}
                 - A list of anchor node names: {anchors}
                 - A dictionary of positions for each node: {positions}
+                - A dictionary of X and Y coordinates for each node: {pos}
                 - A list of links (edges) as [source, target] pairs: {links}
                 - A list of cardinal directions for each node: {cardinal_directions}
 
@@ -691,25 +801,67 @@ def assemble_courtyard_graph(spaces, external_functions, weights, anchors, posit
                 }
 
                 Only use the provided data. Do not invent or assume any values. Output only the JSON object, nothing else.
-                """.format(
-                    spaces=spaces,
-                    external_functions=external_functions,
-                    weights=weights,
-                    anchors=anchors,
-                    positions=positions,
-                    links=links,
-                    cardinal_directions=cardinal_directions
-                )
+                """
         },
     ]
+    chat_messages.append({
+    "role": "user",
+    "content": """
+        spaces: {spaces}
+        external_functions: {external_functions}
+        weights: {weights}
+        anchors: {anchors}
+        positions: {positions}
+        links: {links}
+        cardinal_directions: {cardinal_directions}
+        pos: {pos}
+    """.format(
+        spaces=spaces,
+        external_functions=external_functions,
+        weights=weights,
+        anchors=anchors,
+        positions=positions,
+        links=links,
+        cardinal_directions=cardinal_directions,
+        pos=pos
+    )
+    })
     print("Assembling courtyard graph with conversation history...", chat_messages)
     response = client.chat.completions.create(
         model=completion_model,
         messages=chat_messages
     )
 
-    graph_json = json.loads(response.choices[0].message.content)
-    return graph_json
+    print("Response from LLM for assemble_courtyard_graph:", response.choices[0].message.content)
+    return response.choices[0].message.content
+
+
+def criticize_courtyard_graph(graph):
+    print("Assembling courtyard graph....")
+    chat_messages = [
+        {
+            "role": "system",
+            "content": """
+                You are a landscape architect and graph specialist.
+
+                Your job is to criticize the graph created and to point out things that could be made better for it. 
+
+                You should talk about what spaces could be relocated and why. You mention how environmental and spatial problems could be better solved with another layout. 
+                You should also appreciate the current layout and list out the advantages. List them out in bullet points.
+
+                Ask the user if they want to go back and redo their concept.
+                """
+        },
+    ]
+    print("Criticizing courtyard graph with conversation history...", chat_messages)
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=chat_messages
+    )
+
+    print("Response from LLM for criticize_courtyard_graph:", response.choices[0].message.content)
+    return response.choices[0].message.content
+
 
 
 # def extract_tree_types(conversation_messages):
@@ -944,35 +1096,40 @@ A sunlit courtyard with a central calm area (grid 10,10), social zones to the so
     return response.choices[0].message.content
 
 
-def route_query_to_function(phase: str, conversation_history=None):
-    """
-    Routes a user message to the appropriate LLM function based on intent.
-    Optionally takes conversation_history for context.
-    """
+# def route_query_to_function(phase: str, conversation_history=None):
+#     """
+#     Routes a user message to the appropriate LLM function based on intent.
+#     Optionally takes conversation_history for context.
+#     """
 
-    # Example routing logic (customize as needed)
-    if phase == "concept":
-        # Generate a concept
-        return generate_concept_with_conversation(conversation_history)
+#     # Example routing logic (customize as needed)
+#     if phase == "concept":
+#         # Generate a concept
+#         return generate_concept_with_conversation(conversation_history)
     
-    elif phase == "functions":
-        return extract_external_functions(conversation_history)
+#     elif phase == "functions":
+#         return extract_external_functions(conversation_history)
     
-    elif phase == "attributes":
-        return extract_attributes_with_conversation(conversation_history)
+#     elif phase == "attributes":
+#         return extract_attributes_with_conversation(conversation_history)
 
-    elif phase == "graph":
-        return assemble_courtyard_graph(
-            spaces=conversation_history['spaces'],
-            external_functions=conversation_history['external_functions'],
-            weights=conversation_history['weights'],
-            anchors=conversation_history['anchors'],
-            positions=conversation_history['positions'],
-            links=conversation_history['links']
-        )
+#     elif phase == "graph":
+#         return assemble_courtyard_graph(
+#             spaces=conversation_history['spaces'],
+#             external_functions=conversation_history['external_functions'],
+#             weights=conversation_history['weights'],
+#             anchors=conversation_history['anchors'],
+#             positions=conversation_history['positions'],
+#             links=conversation_history['links']
+#         )
+    
+#     elif phase == "criticism":
+#         return criticize_courtyard_graph(
+#             graph=conversation_history['graph']
+#         )
       
-    else:
-        print(f"Unknown phase: {phase}")
+#     else:
+#         print(f"Unknown phase: {phase}")
 
 
     # else:

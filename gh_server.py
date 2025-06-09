@@ -11,7 +11,6 @@ import io
 import base64
 import threading
 import sys
-from llm_calls import route_query_to_function
 from ui_pyqt import FlaskClientChatUI  
 from PyQt5.QtWidgets import QApplication
 app = Flask(__name__)
@@ -81,7 +80,7 @@ def handle_geometry_data():
     if request.method == 'POST':
         data = request.get_json()
         geometry_data = data.get('geometry_data', [])
-        print("Received spaces from UI:", geometry_data)
+        print("Received geometry from UI:", geometry_data)
         return jsonify({"status": "Spaces updated successfully."})
     elif request.method == 'GET':
         if geometry_data is None:

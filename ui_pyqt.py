@@ -8,7 +8,6 @@ import re
 import networkx as nx
 import matplotlib.pyplot as plt
 
-DB_PATH = "design_data.json"
 
 class FlaskClientChatUI(QMainWindow):
     def __init__(self):
@@ -20,11 +19,12 @@ class FlaskClientChatUI(QMainWindow):
             "functions": [],
             "attributes": [],
             "graph": [],
+            "criticism": [],
         }
         self.current_phase = "concept"
         self.design_data = {}  # Store all extracted design data globally
-        self.DB_PATH = DB_PATH  # Ensure DB_PATH is available as an instance attribute
 
+        
         # Main layout
         layout = QVBoxLayout()
 
@@ -78,27 +78,38 @@ class FlaskClientChatUI(QMainWindow):
             self.input_field.clear()
 
             self.phases[self.current_phase].append({'role': 'user', 'content': message})
-            llm_response = route_query_to_function(self.current_phase, self.phases[self.current_phase])
-            self.phases[self.current_phase].append({'role': 'assistant', 'content': llm_response})
+            assistant_message = None
+
+
+            # llm_response = route_query_to_function(self.current_phase, self.phases[self.current_phase])
+            # self.phases[self.current_phase].append({'role': 'assistant', 'content': llm_response})
 
 
             if (self.current_phase == "concept"):
-                self.concept = llm_response
+                assistant_message = generate_concept_with_conversation(self.phases[self.current_phase])
+                self.concept = assistant_message
             elif (self.current_phase == "functions"):
-                json_llm_response = extract_json(llm_response)
+                assistant_message = extract_external_functions(self.phases[self.current_phase])
+                json_llm_response = extract_json(assistant_message)
                 self.extracted_functions = json_llm_response["external_functions"]
                 self.set_extracted_functions()
             elif (self.current_phase == "attributes"):
-                json_llm_response = extract_json(llm_response)
+                assistant_message = extract_attributes_with_conversation(self.phases[self.current_phase], self.concept)
+                json_llm_response = extract_json(assistant_message)
                 self.attributes = json_llm_response
+            elif (self.current_phase == "criticism"):
+                assistant_message = criticize_courtyard_graph(self.phases[self.current_phase])
+                self.attributes = assistant_message
 
             # Display the user's message in the chat window
             self.chat_display.append(f"<b>You:</b> {message}")
 
             # Display the server's response in the chat window
-            self.chat_display.append(f"<b>Assistant:</b> {llm_response}")
+            self.chat_display.append(f"<b>Assistant:</b> {assistant_message}")
             self.continue_button.show()  # Show continue button for next phase
             self.update_phase_buttons()
+
+
     
             # func_response = requests.post(
             #     "http://127.0.0.1:5000/llm_call/extract_external_functions",
@@ -135,7 +146,7 @@ class FlaskClientChatUI(QMainWindow):
             self.current_phase = phases[current_index + 1]
             self.chat_display.append(f"<b>Phase changed to:</b> {self.current_phase}")
             self.continue_button.hide()
-            if should_show_graph:
+            if self.current_phase == 'graph':
                 self.graph()
         else:
             self.update_phase_buttons()
@@ -163,6 +174,7 @@ class FlaskClientChatUI(QMainWindow):
         self.update_phase_buttons()
 
     def get_plot_area(self):
+        return {"area": "400"}
         plot_area = None
         try:
             plot_area_response = requests.get("http://127.0.0.1:5000/plot_area")
@@ -183,62 +195,32 @@ class FlaskClientChatUI(QMainWindow):
             self.chat_display.append("<span style='color: red;'>Error extracting functions.</span>")
             print(f"Error setting functions: {e}")
             return
-        
-    def append_to_db(self, key, data):
-        import json, os
-        # Load the full conversation history from concept onward
-        if os.path.exists(self.DB_PATH):
-            with open(self.DB_PATH, "r") as f:
-                db = json.load(f)
-        else:
-            db = {}
-        # Save the data under the given key
-        db[key] = data
-        # Also save the full conversation from concept onward
-        db["full_conversation"] = []
-        for phase in ["concept", "functions", "attributes"]:
-            db["full_conversation"].extend(self.phases[phase])
-        with open(self.DB_PATH, "w") as f:
-            json.dump(db, f)
-
-    def load_db(self):
-        import json, os
-        if os.path.exists(self.DB_PATH):
-            with open(self.DB_PATH, "r") as f:
-                return json.load(f)
-        return {}
 
     def geometry_data(self):
         """
         Aggregate all relevant data from all phases, store in self.design_data, and persist to JSON DB.
         """
         try:
-
-
             spaces = extract_json(extract_spaces(self.concept, self.extracted_functions, self.attributes))
             links = extract_json(extract_links(self.concept))
-            # positions = extract_json(extract_positions(self.concept, self.extracted_functions, self.attributes))
-            # cardinal_directions = extract_json(extract_cardinal_directions(self.concept, self.extracted_functions, self.attributes))
-            # weights = extract_json(extract_weights(self.concept, self.extracted_functions, self.attributes))
-            # anchors = extract_json(extract_anchors(self.concept, self.extracted_functions, self.attributes))
+            positions = extract_json(extract_positions(self.concept, self.extracted_functions))
+            cardinal_directions = extract_json(extract_cardinal_directions(self.concept, self.extracted_functions, self.attributes))
+            weights = extract_json(extract_weights(self.concept, self.extracted_functions, self.attributes))
+            anchors = extract_json(extract_anchors(self.concept, self.extracted_functions, self.attributes))
+            pos = extract_json(extract_pos(self.concept, self.extracted_functions))
 
             self.design_data = {
                 "spaces": spaces["spaces"],
-                "links": links,
-                # "positions": positions,
-                # "cardinal_directions": cardinal_directions,
-                # "weights": weights,
-                # "anchors": anchors
+                "links": links["links"],
+                "positions": positions["positions"],
+                "cardinal_directions": cardinal_directions["cardinal_directions"],
+                "weights": weights["weights"],
+                "anchors": anchors["anchors"],
+                "external_functions": self.extracted_functions,
+                "pos": pos["pos"]
             }
             print("Design data aggregated:", self.design_data)
-            # Persist each extraction to the JSON DB
-            # self.append_to_db("spaces", spaces)
-            # self.append_to_db("links", links)
-            # self.append_to_db("positions", positions)
-            # self.append_to_db("cardinal_directions", cardinal_directions)
-            # self.append_to_db("weights", weights)
-            # self.append_to_db("anchors", anchors)
-            # print("Design data extracted and saved to DB:", self.design_data)
+
         except Exception as e:
             self.chat_display.append("<span style='color: red;'>Error extracting geometry data.</span>")
             print(f"Error in geometry_data: {e}")
@@ -247,18 +229,23 @@ class FlaskClientChatUI(QMainWindow):
         try:
             # Always update design_data before graphing
             self.geometry_data()
+            print("design data", self.design_data)
             # # Load all data from the JSON DB for graph generation
-            # db_data = self.load_db()
+            
             # Optionally, pass db_data to assemble_full_courtyard_graph if needed
-            llm_output = assemble_courtyard_graph(self.design_data["spaces"],
-                                                  self.extracted_functions,
-                                                  self.design_data["weights"],
-                                                  self.design_data["anchors"],
-                                                  self.design_data["positions"],
-                                                  self.design_data["links"],
-                                                  self.design_data["cardinal_directions"],
-                                                  )
+            # graph_input = convert_design_data_for_graph(self.design_data, self.extracted_functions)
+            llm_output = assemble_courtyard_graph(
+                self.design_data["spaces"],
+                self.design_data["external_functions"],
+                self.design_data["weights"],
+                self.design_data["anchors"],
+                self.design_data["positions"],
+                self.design_data["links"],
+                self.design_data["cardinal_directions"],
+                self.design_data["pos"]
+            )
             llm_output_json = extract_json(llm_output)
+            print("GRAPH INFO", llm_output_json)
             self.show_graph(llm_output_json)
         except Exception as e:
             self.chat_display.append("<span style='color: red;'>Error generating graph.</span>")
@@ -286,6 +273,9 @@ class FlaskClientChatUI(QMainWindow):
 
 
 def extract_json(body):
+    # if body is json then return
+    if isinstance(body, dict):
+        return body  # Already a JSON object
     json_response = None
     match = re.search(r'\{.*\}', body, re.DOTALL)
     if match:
@@ -299,5 +289,7 @@ def extract_json(body):
         print("body:", body)
     return json_response
 
-import networkx as nx
-import matplotlib.pyplot as plt
+
+
+
+
