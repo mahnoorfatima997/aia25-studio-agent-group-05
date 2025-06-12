@@ -653,7 +653,7 @@ def extract_anchors(concept, external_functions, attributes):
                 Assign which function zones should be anchored and which should not be. Provide your output in the form of true/false.
                 
                 **Example Output:**
-                {"anchors": {"tree":, "true", "pond": "true", "kindergarden": "false", "yoga": "false"}}
+                {"anchors": {"tree": "true", "pond": "true", "kindergarden": "false", "yoga": "false"}}
 
                 DO NOT use any other spaces apart from the external_functions and the courtyard zones.
                 """,
@@ -862,72 +862,63 @@ def criticize_courtyard_graph(graph):
     print("Response from LLM for criticize_courtyard_graph:", response.choices[0].message.content)
     return response.choices[0].message.content
 
-
-
-# def extract_tree_types(conversation_messages):
-#     chat_messages = [
-#             {
-#                 "role": "system",
-#                 "content": """
-
-#                         You are a tree species extraction assistant.
-#                         Your task is to read a given design concept description and extract all specific tree species mentioned as a list.
-
-#                         The tree species should be categorized on the basis of their geometric similarity to the following types:
-#                         acer, aesculus, eucalyptus, fagus, jacaranda, pinus, platanus, quercus, tilia
-
-#                         You will then output the tree species in the following format:
-#                         {acer, eucalyptus, acer, fagus}
-
-#                         # Instructions:
-#                         - Each word must be from the list of tree species provided above
-#                         - Each tree species from the input must be compared geometrically to the list of tree species provided above for most similar geometric shape
-#                         - If a tree species is not found to match any in the list, any other is to be used as a placeholder
-
-#                         # Output Format:
-#                         {acer, eucalyptus, acer, fagus}
-#                         """,
-#             },
-#         ]
-#     chat_messages.extend(conversation_messages)
-#     print("Extracting attributes with conversation history...")
-#     print("Conversation messages:", chat_messages)
-#     response = client.chat.completions.create(
-#         model=completion_model,
-#         messages=chat_messages,
-#     )
-#     return response.choices[0].message.content
-
-def extract_plant_water_requirement(conversation_messages):
+def extract_plant_water_requirement(concept, attributes, tree_placement):
     chat_messages = [
             {
                 "role": "system",
                 "content": """
 
                         You are a plant water requirement extraction assistant.
-                        Your task is to analyze the tree species mentioned in the design concept description and extract their water requirements as a list.
+                        Your task is to analyze the tree species mentioned in the design concept description and from the extract_tree_placement function and extract their water requirements as a list. 
+                        If there are no species mentioned, you should look at any data found and create them.
                         The water requirements should be listed out as a decimal number between 0 and 1, where 0 means no water is required and 1 means the plant requires a lot of water.
                         The item number should match the order of the trees mentioned before.
                         
-                        You will then output the water requirements in the following format:
-                        {0.1, 0.2, 0.3, 0.4}
+                        **Example Output:**
+                        {"pwr": {"acer": "0.3", "pinus": "0.5"}}
 
-                        Do not include any explanation, extra text, or formatting characters—just the final result in the format below.
-
-                        # Instructions:
-                        - Each number must be a decimal between 0 and 1
+                        DO NOT use any other formats. Keep your answers between 0 and 1.
                         """,
             },
         ]
-    chat_messages.extend(conversation_messages)
-    print("Extracting attributes with conversation history...")
+    chat_messages.append({
+    "role": "user",
+    "content": """
+        Concept: {concept}
+        Attributes: {attributes}
+        tree_placement: {tree_placement}
+    """.format(
+        concept=concept,
+        attributes=attributes,
+        tree_placement=tree_placement
+    )
+    })
+    print("Extracting anchors...")
     response = client.chat.completions.create(
         model=completion_model,
         messages=chat_messages,
-    )
+        response_format=
+                {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "pwr",
+                        "description": "Values showing plant water requirements.",
+                        "schema": {
+                            "type": "object",
+                            "properties": {},
+                            "description": "Values showing plant water requirements.",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        },
+                    }
+                }  
+        )
+
+    print("Response from LLM for PWR:", response.choices[0].message.content)
     return response.choices[0].message.content
 
-def extract_tree_placement(conversation_messages):
+def extract_tree_placement(concept, attributes):
     chat_messages = [
         {
             "role": "system",
@@ -937,15 +928,11 @@ def extract_tree_placement(conversation_messages):
                         1. All specific tree species mentioned as a list, categorized by geometric similarity to the following types: acer, aesculus, eucalyptus, fagus, jacaranda, pinus, platanus, quercus, tilia.
                         2. The tree placement as a list of grid cell number pairs, based on adjacency and tree radius.
 
-                        # Output Format:
-                        Return a single JSON object with two keys:
-                        - "tree_species": a list of tree species (e.g., ["acer", "eucalyptus", "acer", "fagus"])
-                        - "tree_placement": a list of string ranges (e.g., ["2 to 4", "5 to 7", "8 to 10"])
 
                         # Example Output:
+
                         {
-                        "tree_species": ["acer", "eucalyptus", "acer", "fagus"],
-                        "tree_placement": ["2 to 4", "5 to 7", "8 to 10"]
+                        "tree_placement": {"acer": "2 to 4", "eucalyptus": "5 to 7", "acer": "8 to 10"},
                         }
 
                         # Instructions:
@@ -957,35 +944,39 @@ def extract_tree_placement(conversation_messages):
                         """,
         },
     ]
-    chat_messages.extend(conversation_messages)
-    print("Extracting tree placement and species with conversation history...")
-    print("Conversation messages:", chat_messages)
+    chat_messages.append({
+    "role": "user",
+    "content": """
+        Concept: {concept}
+        Attributes: {attributes}
+    """.format(
+        concept=concept,
+        attributes=attributes
+    )
+    })
+    print("Extracting anchors...")
     response = client.chat.completions.create(
         model=completion_model,
         messages=chat_messages,
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
-                "name": "tree_placement_and_species",
-                "description": "Extracted tree species and their placement as a JSON object.",
-                "strict": True,
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "tree_species": {
-                            "type": "array",
-                            "items": {"type": "string"}
+        response_format=
+                {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "tree_placement",
+                        "description": "Values showing area to place trees.",
+                        "schema": {
+                            "type": "object",
+                            "properties": {},
+                            "description": "Values showing area to place trees.",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         },
-                        "tree_placement": {
-                            "type": "array",
-                            "items": {"type": "string"}
-                        }
-                    },
-                    "required": ["tree_species", "tree_placement"]
-                }
-            }
-        }
-    )
+                    }
+                }  
+        )
+    
+    print("Response from LLM for tree placement:", response.choices[0].message.content)
     return response.choices[0].message.content
 
 
@@ -1095,48 +1086,3 @@ A sunlit courtyard with a central calm area (grid 10,10), social zones to the so
     )
     return response.choices[0].message.content
 
-
-# def route_query_to_function(phase: str, conversation_history=None):
-#     """
-#     Routes a user message to the appropriate LLM function based on intent.
-#     Optionally takes conversation_history for context.
-#     """
-
-#     # Example routing logic (customize as needed)
-#     if phase == "concept":
-#         # Generate a concept
-#         return generate_concept_with_conversation(conversation_history)
-    
-#     elif phase == "functions":
-#         return extract_external_functions(conversation_history)
-    
-#     elif phase == "attributes":
-#         return extract_attributes_with_conversation(conversation_history)
-
-#     elif phase == "graph":
-#         return assemble_courtyard_graph(
-#             spaces=conversation_history['spaces'],
-#             external_functions=conversation_history['external_functions'],
-#             weights=conversation_history['weights'],
-#             anchors=conversation_history['anchors'],
-#             positions=conversation_history['positions'],
-#             links=conversation_history['links']
-#         )
-    
-#     elif phase == "criticism":
-#         return criticize_courtyard_graph(
-#             graph=conversation_history['graph']
-#         )
-      
-#     else:
-#         print(f"Unknown phase: {phase}")
-
-
-    # else:
-    #     # Default: classify if it's architectural
-    #     classification = classify_input(message)
-    #     if "refuse" in classification.lower():
-    #         return "Sorry, I can only answer questions about architecture."
-    #     else:
-    #         # Fallback: try to generate a concept
-    #         return generate_concept_with_conversation([{"role": "user", "content": message}])

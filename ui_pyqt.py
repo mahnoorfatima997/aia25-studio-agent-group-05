@@ -1,12 +1,10 @@
-import sys
 import requests
 from llm_calls import *
 from PyQt5.QtWidgets import (
-    QMainWindow, QVBoxLayout, QWidget, QLabel, QLineEdit, QPushButton, QTextBrowser, QHBoxLayout
+    QMainWindow, QVBoxLayout, QWidget, QLineEdit, QPushButton, QTextBrowser, QHBoxLayout
 )
 import re
-import networkx as nx
-import matplotlib.pyplot as plt
+from graph_gh import GraphEditor
 
 
 class FlaskClientChatUI(QMainWindow):
@@ -23,7 +21,17 @@ class FlaskClientChatUI(QMainWindow):
         }
         self.current_phase = "concept"
         self.design_data = {}  # Store all extracted design data globally
+        self.tree_data = {}
+        
 
+        self.phase_questions = {
+            "concept": "What is your main design concept or idea?",
+            "functions": "What functions or spaces does your building include?",
+            "attributes": "What are the key attributes or requirements you would like to add?",
+            "graph": "A graph will be shown. You can interact with the graph to create a different layout.",
+            "criticism": "Would you like me to offer some advice about your design?"
+        }
+        
         
         # Main layout
         layout = QVBoxLayout()
@@ -38,10 +46,12 @@ class FlaskClientChatUI(QMainWindow):
 
         self.input_field = QLineEdit()
         self.input_field.setPlaceholderText("Type your message here...")
+        self.input_field.setStyleSheet("font-size: 18px; height: 40px;")
         input_layout.addWidget(self.input_field)
 
         self.send_button = QPushButton("Send")
         self.send_button.clicked.connect(self.send_message)
+        self.send_button.setStyleSheet("font-size: 18px; height: 40px; padding: 8px 20px;")
         input_layout.addWidget(self.send_button)
 
         layout.addLayout(input_layout)
@@ -49,20 +59,44 @@ class FlaskClientChatUI(QMainWindow):
         # Continue button (hidden by default)
         self.continue_button = QPushButton("Continue")
         self.continue_button.clicked.connect(self.handle_continue)
+        self.continue_button.setStyleSheet("font-size: 18px; height: 40px; padding: 8px 20px;")
         self.continue_button.hide()  # Hide initially
         layout.addWidget(self.continue_button)
 
         self.back_button = QPushButton("Back")
         self.back_button.clicked.connect(self.handle_back)
+        self.back_button.setStyleSheet("font-size: 18px; height: 40px; padding: 8px 20px;")
         self.back_button.hide()  # Hide initially
         layout.addWidget(self.back_button)
 
-
+        
         # Set central widget
         container = QWidget()
         container.setLayout(layout)
         self.setCentralWidget(container)
         self.update_phase_buttons()
+        self.show_phase_question()
+
+        # Make the window and fonts bigger
+        self.setGeometry(200, 200, 1000, 900)  # Larger window
+        self.chat_display.setStyleSheet("font-size: 18px; padding: 10px;")
+        self.input_field.setStyleSheet("font-size: 18px; height: 40px;")
+        self.send_button.setStyleSheet("font-size: 18px; height: 40px; padding: 8px 20px;")
+        self.continue_button.setStyleSheet("font-size: 18px; height: 40px; padding: 8px 20px;")
+        self.back_button.setStyleSheet("font-size: 18px; height: 40px; padding: 8px 20px;")
+
+    def show_phase_question(self):
+        question = self.phase_questions.get(self.current_phase)
+        if question:
+            assistant_html = (
+            '<table width="100%" cellspacing="0" cellpadding="10">'
+            '<tr><td align="left">'
+            '<div style="background-color:#d4edda; padding:12px; border-radius:15px; max-width: 60%; display:inline-block; font-size: 16px;">'
+            '{}</div>'
+            '</td></tr></table>'
+        ).format(question)
+        self.chat_display.append(assistant_html)
+
 
     def send_message(self):
         message = self.input_field.text().strip()
@@ -81,10 +115,6 @@ class FlaskClientChatUI(QMainWindow):
             assistant_message = None
 
 
-            # llm_response = route_query_to_function(self.current_phase, self.phases[self.current_phase])
-            # self.phases[self.current_phase].append({'role': 'assistant', 'content': llm_response})
-
-
             if (self.current_phase == "concept"):
                 assistant_message = generate_concept_with_conversation(self.phases[self.current_phase])
                 self.concept = assistant_message
@@ -93,44 +123,78 @@ class FlaskClientChatUI(QMainWindow):
                 json_llm_response = extract_json(assistant_message)
                 self.extracted_functions = json_llm_response["external_functions"]
                 self.set_extracted_functions()
+
+                assistant_message = f"Your requirements have been saved as follows: {json_llm_response}<br>Does this look good? If so, press continue."
             elif (self.current_phase == "attributes"):
                 assistant_message = extract_attributes_with_conversation(self.phases[self.current_phase], self.concept)
                 json_llm_response = extract_json(assistant_message)
                 self.attributes = json_llm_response
+               
+                assistant_message = f"I have added your requirements to the total list of attributes. {json_llm_response}Is this okay? If so, press continue."
             elif (self.current_phase == "criticism"):
                 assistant_message = criticize_courtyard_graph(self.phases[self.current_phase])
                 self.attributes = assistant_message
 
             # Display the user's message in the chat window
-            self.chat_display.append(f"<b>You:</b> {message}")
+            user_html = f"""
+            <table width="100%" cellspacing="0" cellpadding="10">
+            <tr>
+                <td align="right">
+                <div style="
+                    background-color:#d1ecf1;
+                    padding:12px;
+                    border-radius:15px;
+                    max-width: 60%;
+                    display:inline-block;
+                    font-size: 16px;">
+                    {message}
+                </div>
+                </td>
+            </tr>
+            </table>
+            """
+            self.chat_display.append(user_html)
 
             # Display the server's response in the chat window
-            self.chat_display.append(f"<b>Assistant:</b> {assistant_message}")
+            assistant_html = f"""
+            <table width="100%" cellspacing="0" cellpadding="10">
+            <tr>
+                <td align="left">
+                <div style="
+                    background-color:#d4edda;
+                    padding:12px;
+                    border-radius:15px;
+                    max-width: 60%;
+                    display:inline-block;
+                    font-size: 16px;">
+                    {assistant_message}
+                </div>
+                </td>
+            </tr>
+            </table>
+            """
+            self.chat_display.append(assistant_html)
+
+
             self.continue_button.show()  # Show continue button for next phase
             self.update_phase_buttons()
 
+            if self.current_phase == "attributes":
+                self.geometry_data()
+                self.get_tree_data()
+        
+                geometry_data_response = requests.post(
+                    "http://127.0.0.1:5000/geometry_data",
+                    json={"geometry_data": self.design_data}
+                )
+                func_data = geometry_data_response.json()
+                self.chat_display.append(f"<i>Sent geometry data to server. Response: {func_data}</i>")
 
-    
-            # func_response = requests.post(
-            #     "http://127.0.0.1:5000/llm_call/extract_external_functions",
-            #     json={"functions": external_functions}
-            # )
-            # func_data = func_response.json()
-            # external_functions = func_data.get("external_functions", [])
-           
-
-            
-            # Send the concept text to Grasshopper
-            # response = requests.post(
-            #     "http://127.0.0.1:5000/send_to_grasshopper",
-            #     json={"functions": external_functions}
-            # )
-            # response_data = response.json()
-            # print(f"Response from Grasshopper: {response_data}")
-            # if response.status_code == 200:
-            #     self.chat_display.append("<i>Sent external functions to Grasshopper.</i>")
-            # else:
-            #     self.chat_display.append("<span style='color: red;'>Failed to send to Grasshopper.</span>")
+                tree_data_response = requests.post(
+                    "http://127.0.0.1:5000/send_tree_data",
+                    json={"tree_data": self.tree_data}
+                )
+                self.chat_display.append(f"<i>Sent geometry data to server. Response: {tree_data_response.json()}</i>")
 
 
         except Exception as e:
@@ -146,6 +210,7 @@ class FlaskClientChatUI(QMainWindow):
             self.current_phase = phases[current_index + 1]
             self.chat_display.append(f"<b>Phase changed to:</b> {self.current_phase}")
             self.continue_button.hide()
+            self.show_phase_question()
             if self.current_phase == 'graph':
                 self.graph()
         else:
@@ -171,6 +236,7 @@ class FlaskClientChatUI(QMainWindow):
         if current_index > 0:
             self.current_phase = phases[current_index - 1]
             self.chat_display.append(f"<b>Returned to phase:</b> {self.current_phase}")
+            self.show_phase_question()
         self.update_phase_buttons()
 
     def get_plot_area(self):
@@ -195,6 +261,38 @@ class FlaskClientChatUI(QMainWindow):
             self.chat_display.append("<span style='color: red;'>Error extracting functions.</span>")
             print(f"Error setting functions: {e}")
             return
+  
+
+    # def extract_geometry_data(self):
+    #     try:
+    #         response = requests.post(
+    #             "http://localhost:5000/geometry_data",
+    #             json={"geometry_data": self.design_data}),
+    #         if response.status_code == 200:
+    #             self.chat_display.append("<span style='color: green;'>Geometry data sent to server.</span>")
+    #         else:
+    #             self.chat_display.append(f"<span style='color: red;'>Failed to send data: {response.status_code}</span>")
+
+    #     except Exception as e:
+    #         self.chat_display.append("<span style='color: red;'>Error extracting data.</span>")
+    #         print(f"Error setting data: {e}")
+    #         return
+        
+
+    # def tree_geometry_data(self):
+    #     try:
+    #         response = requests.post(
+    #             "http://localhost:5000/send_tree_data",
+    #             json={"geometry_data": self.tree_data}),
+    #         if response.status_code == 200:
+    #             self.chat_display.append("<span style='color: green;'>tree data sent to server.</span>")
+    #         else:
+    #             self.chat_display.append(f"<span style='color: red;'>Failed to send data: {response.status_code}</span>")
+
+    #     except Exception as e:
+    #         self.chat_display.append("<span style='color: red;'>Error extracting data.</span>")
+    #         print(f"Error setting tree data: {e}")
+    #         return
 
     def geometry_data(self):
         """
@@ -225,15 +323,27 @@ class FlaskClientChatUI(QMainWindow):
             self.chat_display.append("<span style='color: red;'>Error extracting geometry data.</span>")
             print(f"Error in geometry_data: {e}")
 
+
+    def get_tree_data(self):
+        """
+        Aggregate all relevant data from all phases, store in self.design_data, and persist to JSON DB.
+        """
+        try:
+            tree_placement = extract_json(extract_tree_placement(self.concept, self.attributes))
+            PWR = extract_json(extract_plant_water_requirement(self.concept, self.attributes, tree_placement))
+
+            self.tree_data = {
+                "tree_placement": tree_placement["tree_placement"],
+                "PWR": PWR["pwr"],                
+            }
+            print("Tree data aggregated:", self.tree_data)
+
+        except Exception as e:
+            self.chat_display.append("<span style='color: red;'>Error extracting geometry data.</span>")
+            print(f"Error in tree_data: {e}")
+
     def graph(self):
         try:
-            # Always update design_data before graphing
-            self.geometry_data()
-            print("design data", self.design_data)
-            # # Load all data from the JSON DB for graph generation
-            
-            # Optionally, pass db_data to assemble_full_courtyard_graph if needed
-            # graph_input = convert_design_data_for_graph(self.design_data, self.extracted_functions)
             llm_output = assemble_courtyard_graph(
                 self.design_data["spaces"],
                 self.design_data["external_functions"],
@@ -251,25 +361,77 @@ class FlaskClientChatUI(QMainWindow):
             self.chat_display.append("<span style='color: red;'>Error generating graph.</span>")
             print(f"Error generating graph: {e}")
 
+    def save_and_send_graph(self):
+        # Save the edited graph to JSON
+        edited_graph = self.graph_editor.get_graph_json()
+        # Convert the edited graph back to design_data_post 
+        design_data_post = self.graph_editor.convert_graph_to_design_data(edited_graph)
+
+        try:
+            response = requests.post(
+                "http://127.0.0.1:5000/geometry_data_post",
+                json={"geometry_data_post": design_data_post}
+            )
+            if response.status_code == 200:
+                self.chat_display.append("<span style='color: green;'>Edited design data sent to Grasshopper.</span>")
+            else:
+                self.chat_display.append(f"<span style='color: red;'>Failed to send edited data: {response.status_code}</span>")
+        except Exception as e:
+            self.chat_display.append("<span style='color: red;'>Error sending edited data.</span>")
+            print(f"Error sending edited data: {e}")
+        self.graph_window.close()
+
+
+    def get_graph_json(self):
+        nodes = []
+        for nid, item in self.nodes.items():
+            x, y = item.scenePos().x(), item.scenePos().y()
+            node_data = {
+                "id": nid,
+                "pos": {"x": round(x, 2), "y": round(y, 2)},
+                "anchor": item.anchor
+            }
+            if not item.anchor:
+                node_data["weight"] = round(item.radius / 1.5, 1)
+            nodes.append(node_data)
+        links = [{"source": e.node1.node_id, "target": e.node2.node_id} for e in self.edges]
+        return {"nodes": nodes, "links": links}
+    
+    def convert_graph_to_design_data(self, graph_json):
+        # Example: reconstruct design_data_post from graph_json
+        design_data_post = {
+            "spaces": [node["id"] for node in graph_json["nodes"]],
+            "positions": {node["id"]: node["pos"] for node in graph_json["nodes"]},
+            "anchors": {node["id"]: node.get("anchor", False) for node in graph_json["nodes"]},
+            "weights": {node["id"]: node.get("weight", 20) for node in graph_json["nodes"]},
+            "links": graph_json["links"],
+            # Add other fields as needed
+        }
+        return design_data_post
 
     def show_graph(self, graph_json):
-        G = nx.Graph() if not graph_json.get("directed", False) else nx.DiGraph()
-        for node in graph_json["nodes"]:
-            node_id = node["id"]
-            pos = (node["pos"]["x"], node["pos"]["y"])
-            G.add_node(node_id, pos=pos, weight=node["weight"], anchor=node["anchor"])
-        for link in graph_json["links"]:
-            G.add_edge(link["source"], link["target"])
-        pos = nx.get_node_attributes(G, "pos")
-        weights = nx.get_node_attributes(G, "weight")
-        anchors = nx.get_node_attributes(G, "anchor")
-        node_colors = ["red" if anchors[n] else "skyblue" for n in G.nodes()]
-        node_sizes = [weights[n] * 100 for n in G.nodes()]
-        plt.figure(figsize=(10, 8))
-        nx.draw(G, pos, with_labels=True, node_color=node_colors, node_size=node_sizes, edge_color="gray", font_size=10)
-        plt.title("Courtyard Graph")
-        plt.axis("equal")
-        plt.show()
+        # Create a new window for the graph editor
+        self.graph_window = QMainWindow(self)
+        self.graph_window.setWindowTitle("Graph Editor")
+        self.graph_window.setGeometry(250, 250, 1000, 800)
+
+        # Create the GraphEditor widget
+        self.graph_editor = GraphEditor(graph_json)
+
+        # Add a Save button
+        save_button = QPushButton("Save and Send to Grasshopper")
+        save_button.setStyleSheet("font-size: 16px; padding: 8px 20px;")
+        save_button.clicked.connect(self.save_and_send_graph)
+
+        # Layout for the graph window
+        graph_layout = QVBoxLayout()
+        graph_layout.addWidget(self.graph_editor)
+        graph_layout.addWidget(save_button)
+
+        container = QWidget()
+        container.setLayout(graph_layout)
+        self.graph_window.setCentralWidget(container)
+        self.graph_window.show()
 
 
 def extract_json(body):
