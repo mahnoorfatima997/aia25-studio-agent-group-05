@@ -4,11 +4,15 @@ import os
 import random
 from PyQt5.QtWidgets import (
     QApplication, QGraphicsView, QGraphicsScene, QGraphicsEllipseItem,
-    QGraphicsLineItem, QGraphicsTextItem, QMainWindow
+    QGraphicsLineItem, QGraphicsTextItem, QMainWindow, QVBoxLayout, QWidget
 )
 from PyQt5.QtGui import QPen, QBrush, QFont, QPainter, QColor
 from PyQt5.QtCore import Qt
 from matplotlib import colormaps
+import networkx as nx
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
 
 
 class NodeItem(QGraphicsEllipseItem):
@@ -110,193 +114,113 @@ class EdgeItem(QGraphicsLineItem):
         super().hoverLeaveEvent(event)
 
 
-class GraphEditor(QGraphicsView):
+class NetworkXGraphCanvas(FigureCanvas):
+    def __init__(self, parent=None, width=10, height=8, dpi=100):
+        self.fig = Figure(figsize=(width, height), dpi=dpi)
+        self.axes = self.fig.add_subplot(111)
+        super().__init__(self.fig)
+        self.setParent(parent)
+        self.G = None
+        self.pos = None
+        self.node_colors = []
+        self.node_sizes = []
+        self.labels = {}
+        
+    def update_graph(self, G, pos=None):
+        self.G = G
+        if pos is None:
+            self.pos = nx.spring_layout(G)
+        else:
+            self.pos = pos
+            
+        # Clear the axes
+        self.axes.clear()
+        
+        # Get node attributes
+        weights = nx.get_node_attributes(G, 'weight')
+        anchors = nx.get_node_attributes(G, 'anchor')
+        
+        # Set node colors and sizes
+        self.node_colors = ["#ff7f0e" if anchors.get(n, False) else "#1f77b4" for n in G.nodes()]
+        self.node_sizes = [weights.get(n, 20) * 100 for n in G.nodes()]
+        self.labels = {n: n for n in G.nodes()}
+        
+        # Draw the graph
+        nx.draw_networkx_edges(G, self.pos, ax=self.axes, width=1.5, alpha=0.6)
+        nx.draw_networkx_nodes(G, self.pos, ax=self.axes, 
+                             node_color=self.node_colors, 
+                             node_size=self.node_sizes)
+        nx.draw_networkx_labels(G, self.pos, ax=self.axes, 
+                              labels=self.labels, 
+                              font_size=9)
+        
+        self.axes.set_title("Courtyard Space Network Graph")
+        self.axes.axis('off')
+        self.fig.tight_layout()
+        self.draw()
+
+
+class GraphEditor(QWidget):
     def __init__(self, graph_data):
         super().__init__()
-        self.setRenderHint(QPainter.Antialiasing)
-        self.setScene(QGraphicsScene(self))
-        self.setSceneRect(0, 0, 1000, 800)
-
-        self.nodes = {}
-        self.edges = []
-        self.edge_pairs = set()
-        self.selected_node = None
-
-        self.summer = colormaps.get_cmap("summer")  # ✅ Use 'summer' colormap
+        self.layout = QVBoxLayout()
+        self.setLayout(self.layout)
+        
+        # Create NetworkX graph
+        self.G = nx.Graph()
         self.load_graph(graph_data)
-
-            # Accept both the full design_data or a pre-built graph JSON
-        if "nodes" in graph_data and "links" in graph_data:
-            # Already in graph format (from LLM call)
-            self.load_graph(graph_data)
-        else:
-            # Convert design_data to graph format
-            graph_json = self.convert_design_data_to_graph(graph_data)
-            self.load_graph(graph_json)
-
-    def convert_design_data_to_graph(self, design_data):
-        nodes = []
-        weights = design_data.get("weights", {})
-        anchors = design_data.get("anchors", {})
-        positions = design_data.get("positions", {})
-        for node_id in design_data.get("spaces", []):
-            pos = positions.get(node_id, {"x": 0, "y": 0})
-            node = {
-                "id": node_id,
-                "pos": {"x": pos.get("x", 0), "y": pos.get("y", 0)},
-                "anchor": anchors.get(node_id, False),
-                "weight": weights.get(node_id, 20)
-            }
-            nodes.append(node)
-        links = []
-        for link in design_data.get("links", []):
-            if isinstance(link, dict):
-                source = link.get("source")
-                target = link.get("target")
-            elif isinstance(link, (list, tuple)) and len(link) == 2:
-                source, target = link
-            else:
-                continue
-            links.append({"source": source, "target": target})
-        return {"nodes": nodes, "links": links}
-
+        
+        # Create matplotlib canvas
+        self.canvas = NetworkXGraphCanvas(self, width=10, height=8)
+        self.layout.addWidget(self.canvas)
+        
+        # Update the canvas with the graph
+        self.canvas.update_graph(self.G)
+        
     def load_graph(self, data):
-        xs = [n["pos"]["x"] for n in data["nodes"]]
-        ys = [n["pos"]["y"] for n in data["nodes"]]
-        min_x, max_x = min(xs), max(xs)
-        min_y, max_y = min(ys), max(ys)
-
-        def transform(x, y):
-            sx = (x - min_x) / (max_x - min_x + 1e-5) * 800 + 100
-            sy = (1 - (y - min_y) / (max_y - min_y + 1e-5)) * 600 + 100
-            return sx, sy
-
-        for i, node in enumerate(data["nodes"]):
-            nid = node["id"]
-            x, y = transform(node["pos"]["x"], node["pos"]["y"])
-            anchor = node.get("anchor", False)
-            base_weight = node.get("weight", 20)
-            weight = min(max(base_weight * 1.5, 15), 80)
-
-            if anchor:
-                color = QColor.fromHsv(300 + random.randint(-20, 20), 200, 255)
-            else:
-                rgba = self.summer(i / max(1, len(data["nodes"]) - 1))  # ✅ correct usage
-                color = QColor.fromRgbF(*rgba[:3])
-
-            item = NodeItem(nid, x, y, anchor, nid, color, weight)
-            self.scene().addItem(item)
-            self.nodes[nid] = item
-
+        # Add nodes with their attributes
+        for node in data["nodes"]:
+            node_id = node["id"]
+            pos = (node["pos"]["x"], node["pos"]["y"])
+            self.G.add_node(
+                node_id,
+                pos=pos,
+                weight=node.get("weight", 20),
+                anchor=node.get("anchor", False)
+            )
+        
+        # Add edges
         for link in data["links"]:
-            self.add_edge(link["source"], link["target"])
-
-    def add_edge(self, id1, id2):
-        if (id1, id2) in self.edge_pairs or (id2, id1) in self.edge_pairs:
-            return
-        edge = EdgeItem(self.nodes[id1], self.nodes[id2])
-        self.scene().addItem(edge)
-        self.edges.append(edge)
-        self.edge_pairs.add((id1, id2))
-
-    def mousePressEvent(self, event):
-        item = self.itemAt(event.pos())
-        modifiers = QApplication.keyboardModifiers()
-
-        if isinstance(item, NodeItem):
-            node_id = item.node_id
-            if modifiers == Qt.ControlModifier:
-                if self.selected_node is None:
-                    self.selected_node = node_id
-                    item.setBrush(QBrush(Qt.yellow))
-                else:
-                    if self.selected_node != node_id:
-                        self.add_edge(self.selected_node, node_id)
-                    self.restore_node_color(self.selected_node)
-                    self.selected_node = None
-        elif isinstance(item, EdgeItem):
-            if event.button() == Qt.RightButton:
-                self.scene().removeItem(item)
-                self.edges.remove(item)
-                self.edge_pairs.discard((item.node1.node_id, item.node2.node_id))
-                self.edge_pairs.discard((item.node2.node_id, item.node1.node_id))
-        else:
-            if self.selected_node:
-                self.restore_node_color(self.selected_node)
-                self.selected_node = None
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        super().mouseMoveEvent(event)
-        for edge in self.edges:
-            edge.update_position()
-
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_S:
-            self.save_graph()
-
-    def restore_node_color(self, node_id):
-        node = self.nodes[node_id]
-        if node.anchor:
-            node.setBrush(QBrush(QColor(200, 80, 200)))
-        else:
-            index = list(self.nodes.keys()).index(node_id)
-            rgba = self.summer(index / max(1, len(self.nodes) - 1))  # ✅ correct usage
-            node.setBrush(QBrush(QColor.fromRgbF(*rgba[:3])))
-
-    def save_graph(self):
-        nodes = []
-        for nid, item in self.nodes.items():
-            x, y = item.scenePos().x(), item.scenePos().y()
-            node_data = {
-                "id": nid,
-                "pos": {"x": round(x, 2), "y": round(y, 2)},
-                "anchor": item.anchor
-            }
-            if not item.anchor:
-                node_data["weight"] = round(item.radius / 1.5, 1)
-            nodes.append(node_data)
-
-        links = [{"source": e.node1.node_id, "target": e.node2.node_id} for e in self.edges]
-
-        new_data = {"nodes": nodes, "links": links}
-
-        out_path = os.path.expanduser("~/Downloads/edited_graph.json")
-        with open(out_path, "w") as f:
-            json.dump(new_data, f, indent=2)
-        print(f"✅ Graph saved to: {out_path}")
-
+            self.G.add_edge(link["source"], link["target"])
+            
+        # Store positions
+        self.pos = {node["id"]: (node["pos"]["x"], node["pos"]["y"]) 
+                   for node in data["nodes"]}
+    
     def get_graph_json(self):
-        """
-        Return the current graph as a JSON-serializable dict with 'nodes' and 'links'.
-        Each node includes id, pos, anchor, and weight (if not anchor).
-        Each link includes source and target.
-        """
+        """Convert the NetworkX graph back to JSON format"""
         nodes = []
-        for nid, item in self.nodes.items():
-            x, y = item.scenePos().x(), item.scenePos().y()
+        for node_id in self.G.nodes():
+            pos = self.pos.get(node_id, (0, 0))
             node_data = {
-                "id": nid,
-                "pos": {"x": round(x, 2), "y": round(y, 2)},
-                "anchor": item.anchor
+                "id": node_id,
+                "pos": {"x": pos[0], "y": pos[1]},
+                "weight": self.G.nodes[node_id].get("weight", 20),
+                "anchor": self.G.nodes[node_id].get("anchor", False)
             }
-            if not item.anchor:
-                node_data["weight"] = round(item.radius / 1.5, 1)
             nodes.append(node_data)
-        links = [{"source": e.node1.node_id, "target": e.node2.node_id} for e in self.edges]
+            
+        links = [{"source": u, "target": v} for u, v in self.G.edges()]
         return {"nodes": nodes, "links": links}
-
+    
     def convert_graph_to_design_data(self, graph_json):
-        """
-        Convert the graph JSON (nodes/links) to the design_data_post structure expected by the Flask server.
-        """
+        """Convert the graph JSON to design data format"""
         design_data_post = {
             "spaces": [node["id"] for node in graph_json["nodes"]],
             "positions": {node["id"]: node["pos"] for node in graph_json["nodes"]},
             "anchors": {node["id"]: node.get("anchor", False) for node in graph_json["nodes"]},
             "weights": {node["id"]: node.get("weight", 20) for node in graph_json["nodes"]},
             "links": graph_json["links"]
-            # Add other fields as needed
         }
         return design_data_post
 

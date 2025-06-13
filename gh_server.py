@@ -16,6 +16,8 @@ generated_spaces = None
 geometry_data = None
 design_data = None
 tree_data = None
+width = None
+length = None
 
 @app.route('/plot_area', methods=['GET', 'POST'])
 def get_plot_area():
@@ -24,9 +26,9 @@ def get_plot_area():
         data = request.get_json()
         area = data.get('input')
         print("Received user input:", area)
-        return jsonify({"area": area})
+        return jsonify({"area": area, "width": width, "length": length})
     else:  # GET
-        return jsonify({"area": area})
+        return jsonify({"area": area, "width": width, "length": length})
     
 
 

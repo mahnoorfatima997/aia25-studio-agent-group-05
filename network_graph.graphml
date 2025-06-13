@@ -1,0 +1,78 @@
+<?xml version='1.0' encoding='utf-8'?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd"><key id="d6" for="node" attr.name="is_external" attr.type="boolean"/>
+<key id="d5" for="node" attr.name="is_courtyard" attr.type="boolean"/>
+<key id="d4" for="node" attr.name="is_central" attr.type="boolean"/>
+<key id="d3" for="node" attr.name="anchor" attr.type="boolean"/>
+<key id="d2" for="node" attr.name="weight" attr.type="double"/>
+<key id="d1" for="node" attr.name="pos_y" attr.type="double"/>
+<key id="d0" for="node" attr.name="pos_x" attr.type="double"/>
+<graph edgedefault="undirected"><node id="central">
+  <data key="d0">6.0</data>
+  <data key="d1">6.0</data>
+  <data key="d2">10.0</data>
+  <data key="d3">True</data>
+  <data key="d4">True</data>
+</node>
+<node id="play">
+  <data key="d0">6.0</data>
+  <data key="d1">6.0</data>
+  <data key="d2">8.0</data>
+  <data key="d3">False</data>
+  <data key="d5">True</data>
+</node>
+<node id="rest">
+  <data key="d0">6.0</data>
+  <data key="d1">6.0</data>
+  <data key="d2">6.0</data>
+  <data key="d3">False</data>
+  <data key="d5">True</data>
+</node>
+<node id="pond">
+  <data key="d0">6.0</data>
+  <data key="d1">6.0</data>
+  <data key="d2">3.0</data>
+  <data key="d3">False</data>
+  <data key="d5">True</data>
+</node>
+<node id="flower">
+  <data key="d0">6.0</data>
+  <data key="d1">6.0</data>
+  <data key="d2">5.0</data>
+  <data key="d3">False</data>
+  <data key="d5">True</data>
+</node>
+<node id="tree">
+  <data key="d0">6.0</data>
+  <data key="d1">6.0</data>
+  <data key="d2">7.0</data>
+  <data key="d3">True</data>
+  <data key="d5">True</data>
+</node>
+<node id="cafe">
+  <data key="d0">6.0</data>
+  <data key="d1">-2.0</data>
+  <data key="d2">0.0</data>
+  <data key="d3">False</data>
+  <data key="d6">True</data>
+</node>
+<node id="library">
+  <data key="d0">6.0</data>
+  <data key="d1">-2.0</data>
+  <data key="d2">0.0</data>
+  <data key="d3">False</data>
+  <data key="d6">True</data>
+</node>
+<node id="school">
+  <data key="d0">6.0</data>
+  <data key="d1">-2.0</data>
+  <data key="d2">0.0</data>
+  <data key="d3">False</data>
+  <data key="d6">True</data>
+</node>
+<edge source="central" target="play"/>
+<edge source="central" target="rest"/>
+<edge source="central" target="pond"/>
+<edge source="central" target="flower"/>
+<edge source="central" target="tree"/>
+<edge source="play" target="school"/>
+</graph></graphml>

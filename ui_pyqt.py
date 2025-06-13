@@ -1,16 +1,21 @@
 import requests
 from llm_calls import *
 from PyQt5.QtWidgets import (
-    QMainWindow, QVBoxLayout, QWidget, QLineEdit, QPushButton, QTextBrowser, QHBoxLayout
+    QMainWindow, QVBoxLayout, QWidget, QLabel, QLineEdit, QPushButton, QTextBrowser, QHBoxLayout
 )
 import re
 from graph_gh import GraphEditor
-
+import csv
+import os
 
 class FlaskClientChatUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("AI Assistant")
+        self.setWindowTitle("Courtyard Design Copilot")
+
+        # Now create a QLabel for a pretty title inside the window
+        title_label = QLabel("🧠 Courtyard Design Copilot")
+        title_label.setStyleSheet("font-size: 30px; font-weight: bold; margin-bottom: 10px;")
         self.setGeometry(200, 200, 800, 800)
         self.phases = {
             "concept": [],
@@ -22,7 +27,6 @@ class FlaskClientChatUI(QMainWindow):
         self.current_phase = "concept"
         self.design_data = {}  # Store all extracted design data globally
         self.tree_data = {}
-        
 
         self.phase_questions = {
             "concept": "What is your main design concept or idea?",
@@ -213,6 +217,8 @@ class FlaskClientChatUI(QMainWindow):
             self.show_phase_question()
             if self.current_phase == 'graph':
                 self.graph()
+                
+                
         else:
             self.update_phase_buttons()
 
@@ -240,17 +246,40 @@ class FlaskClientChatUI(QMainWindow):
         self.update_phase_buttons()
 
     def get_plot_area(self):
-        return {"area": "400"}
-        plot_area = None
         try:
             plot_area_response = requests.get("http://127.0.0.1:5000/plot_area")
             print(f"Plot area response status: {plot_area_response.status_code}")
             plot_area = plot_area_response.json()
             print("plot_area", plot_area)
+            
+            # If all values are None, use default values
+            if all(v is None for v in [plot_area.get("area"), plot_area.get("width"), plot_area.get("length")]):
+                print("Using default plot dimensions")
+                return {
+                    "area": "400",
+                    "width": "20",
+                    "length": "20"
+                }
+            
+            # Calculate width and length from area if not provided
+            if plot_area.get("width") is None or plot_area.get("length") is None:
+                area = float(plot_area.get("area", "400"))
+                # Assume a square plot if dimensions not provided
+                side_length = (area ** 0.5)  # Square root of area
+                plot_area["width"] = str(side_length)
+                plot_area["length"] = str(side_length)
+                print("Calculated dimensions:", plot_area)
+            
+            return plot_area
         except Exception as e:
             self.chat_display.append("<span style='color: red;'>Error fetching plot area from Grasshopper.</span>")
             print(f"Error fetching plot area: {e}")
-        return plot_area
+            # Return default values if there's an error
+            return {
+                "area": "400",
+                "width": "20",
+                "length": "20"
+            }
     
     def set_extracted_functions(self):
         try:
@@ -261,38 +290,7 @@ class FlaskClientChatUI(QMainWindow):
             self.chat_display.append("<span style='color: red;'>Error extracting functions.</span>")
             print(f"Error setting functions: {e}")
             return
-  
 
-    # def extract_geometry_data(self):
-    #     try:
-    #         response = requests.post(
-    #             "http://localhost:5000/geometry_data",
-    #             json={"geometry_data": self.design_data}),
-    #         if response.status_code == 200:
-    #             self.chat_display.append("<span style='color: green;'>Geometry data sent to server.</span>")
-    #         else:
-    #             self.chat_display.append(f"<span style='color: red;'>Failed to send data: {response.status_code}</span>")
-
-    #     except Exception as e:
-    #         self.chat_display.append("<span style='color: red;'>Error extracting data.</span>")
-    #         print(f"Error setting data: {e}")
-    #         return
-        
-
-    # def tree_geometry_data(self):
-    #     try:
-    #         response = requests.post(
-    #             "http://localhost:5000/send_tree_data",
-    #             json={"geometry_data": self.tree_data}),
-    #         if response.status_code == 200:
-    #             self.chat_display.append("<span style='color: green;'>tree data sent to server.</span>")
-    #         else:
-    #             self.chat_display.append(f"<span style='color: red;'>Failed to send data: {response.status_code}</span>")
-
-    #     except Exception as e:
-    #         self.chat_display.append("<span style='color: red;'>Error extracting data.</span>")
-    #         print(f"Error setting tree data: {e}")
-    #         return
 
     def geometry_data(self):
         """
@@ -300,7 +298,7 @@ class FlaskClientChatUI(QMainWindow):
         """
         try:
             spaces = extract_json(extract_spaces(self.concept, self.extracted_functions, self.attributes))
-            links = extract_json(extract_links(self.concept))
+            links = extract_json(extract_links(self.concept, self.extracted_functions))
             positions = extract_json(extract_positions(self.concept, self.extracted_functions))
             cardinal_directions = extract_json(extract_cardinal_directions(self.concept, self.extracted_functions, self.attributes))
             weights = extract_json(extract_weights(self.concept, self.extracted_functions, self.attributes))
@@ -342,6 +340,12 @@ class FlaskClientChatUI(QMainWindow):
             self.chat_display.append("<span style='color: red;'>Error extracting geometry data.</span>")
             print(f"Error in tree_data: {e}")
 
+    def create_networkx_graph(self, graph_json):
+        """
+        This function is now deprecated. All graph visualization is handled by GraphEditor.
+        """
+        pass  # No longer used
+
     def graph(self):
         try:
             llm_output = assemble_courtyard_graph(
@@ -356,10 +360,36 @@ class FlaskClientChatUI(QMainWindow):
             )
             llm_output_json = extract_json(llm_output)
             print("GRAPH INFO", llm_output_json)
+            export_graph_to_csv(llm_output_json)
+            # Show the interactive graph editor pop-up
             self.show_graph(llm_output_json)
         except Exception as e:
             self.chat_display.append("<span style='color: red;'>Error generating graph.</span>")
             print(f"Error generating graph: {e}")
+
+    def show_graph(self, graph_json):
+        # Create a new window for the graph editor
+        self.graph_window = QMainWindow(self)
+        self.graph_window.setWindowTitle("Graph Editor")
+        self.graph_window.setGeometry(250, 250, 1000, 800)
+
+        # Create the GraphEditor widget (from user-provided code)
+        self.graph_editor = GraphEditor(graph_json)
+
+        # Add a Save button
+        save_button = QPushButton("Save and Send to Grasshopper")
+        save_button.setStyleSheet("font-size: 16px; padding: 8px 20px;")
+        save_button.clicked.connect(self.save_and_send_graph)
+
+        # Layout for the graph window
+        graph_layout = QVBoxLayout()
+        graph_layout.addWidget(self.graph_editor)
+        graph_layout.addWidget(save_button)
+
+        container = QWidget()
+        container.setLayout(graph_layout)
+        self.graph_window.setCentralWidget(container)
+        self.graph_window.show()
 
     def save_and_send_graph(self):
         # Save the edited graph to JSON
@@ -409,30 +439,6 @@ class FlaskClientChatUI(QMainWindow):
         }
         return design_data_post
 
-    def show_graph(self, graph_json):
-        # Create a new window for the graph editor
-        self.graph_window = QMainWindow(self)
-        self.graph_window.setWindowTitle("Graph Editor")
-        self.graph_window.setGeometry(250, 250, 1000, 800)
-
-        # Create the GraphEditor widget
-        self.graph_editor = GraphEditor(graph_json)
-
-        # Add a Save button
-        save_button = QPushButton("Save and Send to Grasshopper")
-        save_button.setStyleSheet("font-size: 16px; padding: 8px 20px;")
-        save_button.clicked.connect(self.save_and_send_graph)
-
-        # Layout for the graph window
-        graph_layout = QVBoxLayout()
-        graph_layout.addWidget(self.graph_editor)
-        graph_layout.addWidget(save_button)
-
-        container = QWidget()
-        container.setLayout(graph_layout)
-        self.graph_window.setCentralWidget(container)
-        self.graph_window.show()
-
 
 def extract_json(body):
     # if body is json then return
@@ -451,7 +457,43 @@ def extract_json(body):
         print("body:", body)
     return json_response
 
+def export_graph_to_csv(graph_json, out_dir=None):
+    """
+    Exports two CSV files: nodes.csv and edges.csv from the given graph_json.
+    """
+    if out_dir is None:
+        out_dir = os.path.expanduser("~/Downloads")
+    nodes_path = os.path.join(out_dir, "nodes.csv")
+    edges_path = os.path.join(out_dir, "edges.csv")
 
+    # Write nodes
+    with open(nodes_path, "w", newline='') as f_nodes:
+        if not graph_json["nodes"]:
+            return
+        fieldnames = list(graph_json["nodes"][0].keys())
+        # Flatten pos if present
+        if "pos" in fieldnames:
+            fieldnames.remove("pos")
+            fieldnames += ["x", "y"]
+        writer = csv.DictWriter(f_nodes, fieldnames=fieldnames)
+        writer.writeheader()
+        for node in graph_json["nodes"]:
+            row = node.copy()
+            if "pos" in row:
+                row["x"] = row["pos"].get("x", "")
+                row["y"] = row["pos"].get("y", "")
+                del row["pos"]
+            writer.writerow(row)
+
+    # Write edges
+    with open(edges_path, "w", newline='') as f_edges:
+        writer = csv.DictWriter(f_edges, fieldnames=["source", "target"])
+        writer.writeheader()
+        for edge in graph_json["links"]:
+            writer.writerow({"source": edge["source"], "target": edge["target"]})
+
+    print(f"✅ Nodes CSV saved to: {nodes_path}")
+    print(f"✅ Edges CSV saved to: {edges_path}")
 
 
 
