@@ -7,6 +7,7 @@ import re
 from graph_gh import GraphEditor
 import csv
 import os
+import random
 
 class FlaskClientChatUI(QMainWindow):
     def __init__(self):
@@ -415,7 +416,11 @@ class FlaskClientChatUI(QMainWindow):
     def get_graph_json(self):
         nodes = []
         for nid, item in self.nodes.items():
-            x, y = item.scenePos().x(), item.scenePos().y()
+            x = item.scenePos().x()
+            y = item.scenePos().y()
+            if x is None or y is None:
+                x = random.uniform(0, 1)
+                y = random.uniform(0, 1)
             node_data = {
                 "id": nid,
                 "pos": {"x": round(x, 2), "y": round(y, 2)},
