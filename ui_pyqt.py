@@ -4,20 +4,237 @@ from PyQt5.QtWidgets import (
     QMainWindow, QVBoxLayout, QWidget, QLabel, QLineEdit, QPushButton, QTextBrowser, QHBoxLayout
 )
 import re
-from graph_gh import GraphEditor
+from graph_gh import GraphEditor, MainWindow, QApplication
 import csv
 import os
 import random
+import json
 
 class FlaskClientChatUI(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Courtyard Design Copilot")
+        
+        # Set window style
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #f5f5f5;
+            }
+            QWidget {
+                font-family: 'Segoe UI', Arial, sans-serif;
+            }
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+            QPushButton:pressed {
+                background-color: #0D47A1;
+            }
+            QLineEdit {
+                border: 2px solid #E0E0E0;
+                border-radius: 4px;
+                padding: 8px;
+                background-color: white;
+            }
+            QLineEdit:focus {
+                border-color: #2196F3;
+            }
+            QTextBrowser {
+                border: none;
+                background-color: white;
+                border-radius: 8px;
+            }
+        """)
 
-        # Now create a QLabel for a pretty title inside the window
+        # Create a container widget for the main content
+        container = QWidget()
+        self.setCentralWidget(container)
+        main_layout = QVBoxLayout(container)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(15)
+
+        # Title section with icon and gradient background
+        title_container = QWidget()
+        title_container.setStyleSheet("""
+            QWidget {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+                                          stop:0 #2196F3, stop:1 #1976D2);
+                border-radius: 8px;
+                padding: 15px;
+            }
+        """)
+        title_layout = QHBoxLayout(title_container)
+        title_layout.setContentsMargins(20, 15, 20, 15)
+
+        # Title with icon
         title_label = QLabel("🧠 Courtyard Design Copilot")
-        title_label.setStyleSheet("font-size: 30px; font-weight: bold; margin-bottom: 10px;")
-        self.setGeometry(200, 200, 800, 800)
+        title_label.setStyleSheet("""
+            QLabel {
+                color: white;
+                font-size: 24px;
+                font-weight: bold;
+            }
+        """)
+        title_layout.addWidget(title_label)
+        main_layout.addWidget(title_container)
+
+        # Chat display area with custom styling
+        self.chat_display = QTextBrowser()
+        self.chat_display.setStyleSheet("""
+            QTextBrowser {
+                background-color: white;
+                border: 1px solid #E0E0E0;
+                border-radius: 8px;
+                padding: 15px;
+                font-size: 14px;
+                line-height: 1.5;
+            }
+        """)
+        self.chat_display.setReadOnly(True)
+        self.chat_display.setMinimumHeight(500)
+        main_layout.addWidget(self.chat_display)
+
+        # Input area container
+        input_container = QWidget()
+        input_container.setStyleSheet("""
+            QWidget {
+                background-color: white;
+                border-radius: 8px;
+                padding: 10px;
+            }
+        """)
+        input_layout = QHBoxLayout(input_container)
+        input_layout.setContentsMargins(10, 10, 10, 10)
+        input_layout.setSpacing(10)
+
+        # Input field with placeholder and styling
+        self.input_field = QLineEdit()
+        self.input_field.setPlaceholderText("Type your message here...")
+        self.input_field.setStyleSheet("""
+            QLineEdit {
+                border: 2px solid #E0E0E0;
+                border-radius: 20px;
+                padding: 10px 15px;
+                font-size: 14px;
+                background-color: #F5F5F5;
+            }
+            QLineEdit:focus {
+                border-color: #2196F3;
+                background-color: white;
+            }
+        """)
+        input_layout.addWidget(self.input_field)
+
+        # Send button with icon
+        self.send_button = QPushButton("Send")
+        self.send_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                border-radius: 20px;
+                padding: 10px 25px;
+                font-weight: bold;
+                font-size: 14px;
+                min-width: 100px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+            QPushButton:pressed {
+                background-color: #0D47A1;
+            }
+        """)
+        self.send_button.clicked.connect(self.send_message)
+        input_layout.addWidget(self.send_button)
+
+        main_layout.addWidget(input_container)
+
+        # Control buttons container
+        control_container = QWidget()
+        control_layout = QHBoxLayout(control_container)
+        control_layout.setContentsMargins(0, 0, 0, 0)
+        control_layout.setSpacing(10)
+
+        # Back button (create first so it's on the left)
+        self.back_button = QPushButton("Back")
+        self.back_button.setStyleSheet("""
+            QPushButton {
+                background-color: #757575;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 10px 25px;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #616161;
+            }
+            QPushButton:pressed {
+                background-color: #424242;
+            }
+        """)
+        self.back_button.clicked.connect(self.handle_back)
+        self.back_button.setVisible(False)  # Initially hidden
+        control_layout.addWidget(self.back_button)
+
+        # Continue button
+        self.continue_button = QPushButton("Continue")
+        self.continue_button.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 10px 25px;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #388E3C;
+            }
+            QPushButton:pressed {
+                background-color: #1B5E20;
+            }
+        """)
+        self.continue_button.clicked.connect(self.handle_continue)
+        self.continue_button.setVisible(False)  # Initially hidden
+        control_layout.addWidget(self.continue_button)
+
+        # Add Export CSV button to control container
+        self.export_csv_button = QPushButton("Export Graph to CSV")
+        self.export_csv_button.setStyleSheet("""
+            QPushButton {
+                background-color: #9C27B0;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 10px 25px;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #7B1FA2;
+            }
+            QPushButton:pressed {
+                background-color: #4A148C;
+            }
+        """)
+        self.export_csv_button.clicked.connect(self.export_graph_to_csv)
+        self.export_csv_button.setVisible(False)  # Initially hidden
+        control_layout.addWidget(self.export_csv_button)
+
+        main_layout.addWidget(control_container)
+
+        # Initialize other properties
         self.phases = {
             "concept": [],
             "functions": [],
@@ -26,7 +243,7 @@ class FlaskClientChatUI(QMainWindow):
             "criticism": [],
         }
         self.current_phase = "concept"
-        self.design_data = {}  # Store all extracted design data globally
+        self.design_data = {}
         self.tree_data = {}
 
         self.phase_questions = {
@@ -36,176 +253,190 @@ class FlaskClientChatUI(QMainWindow):
             "graph": "A graph will be shown. You can interact with the graph to create a different layout.",
             "criticism": "Would you like me to offer some advice about your design?"
         }
+
+        # Set window size and show
+        self.setGeometry(200, 200, 1000, 800)
         
-        
-        # Main layout
-        layout = QVBoxLayout()
-
-        # Chat display area
-        self.chat_display = QTextBrowser()
-        self.chat_display.setReadOnly(True)
-        layout.addWidget(self.chat_display)
-
-        # Input and send button layout
-        input_layout = QHBoxLayout()
-
-        self.input_field = QLineEdit()
-        self.input_field.setPlaceholderText("Type your message here...")
-        self.input_field.setStyleSheet("font-size: 18px; height: 40px;")
-        input_layout.addWidget(self.input_field)
-
-        self.send_button = QPushButton("Send")
-        self.send_button.clicked.connect(self.send_message)
-        self.send_button.setStyleSheet("font-size: 18px; height: 40px; padding: 8px 20px;")
-        input_layout.addWidget(self.send_button)
-
-        layout.addLayout(input_layout)
-
-        # Continue button (hidden by default)
-        self.continue_button = QPushButton("Continue")
-        self.continue_button.clicked.connect(self.handle_continue)
-        self.continue_button.setStyleSheet("font-size: 18px; height: 40px; padding: 8px 20px;")
-        self.continue_button.hide()  # Hide initially
-        layout.addWidget(self.continue_button)
-
-        self.back_button = QPushButton("Back")
-        self.back_button.clicked.connect(self.handle_back)
-        self.back_button.setStyleSheet("font-size: 18px; height: 40px; padding: 8px 20px;")
-        self.back_button.hide()  # Hide initially
-        layout.addWidget(self.back_button)
-
-        
-        # Set central widget
-        container = QWidget()
-        container.setLayout(layout)
-        self.setCentralWidget(container)
+        # Initialize button states
         self.update_phase_buttons()
         self.show_phase_question()
-
-        # Make the window and fonts bigger
-        self.setGeometry(200, 200, 1000, 900)  # Larger window
-        self.chat_display.setStyleSheet("font-size: 18px; padding: 10px;")
-        self.input_field.setStyleSheet("font-size: 18px; height: 40px;")
-        self.send_button.setStyleSheet("font-size: 18px; height: 40px; padding: 8px 20px;")
-        self.continue_button.setStyleSheet("font-size: 18px; height: 40px; padding: 8px 20px;")
-        self.back_button.setStyleSheet("font-size: 18px; height: 40px; padding: 8px 20px;")
 
     def show_phase_question(self):
         question = self.phase_questions.get(self.current_phase)
         if question:
-            assistant_html = (
-            '<table width="100%" cellspacing="0" cellpadding="10">'
-            '<tr><td align="left">'
-            '<div style="background-color:#d4edda; padding:12px; border-radius:15px; max-width: 60%; display:inline-block; font-size: 16px;">'
-            '{}</div>'
-            '</td></tr></table>'
-        ).format(question)
-        self.chat_display.append(assistant_html)
-
+            assistant_html = f"""
+            <div style="margin: 10px 0;">
+                <div style="
+                    background-color: #F5F5F5;
+                    color: #212121;
+                    padding: 12px 20px;
+                    border-radius: 15px;
+                    border-top-left-radius: 5px;
+                    margin-right: 20%;
+                    margin-left: 0;
+                    display: inline-block;
+                    max-width: 70%;
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+                    font-size: 14px;
+                    line-height: 1.5;
+                ">
+                    {question}
+                </div>
+            </div>
+            """
+            self.chat_display.append(assistant_html)
 
     def send_message(self):
         message = self.input_field.text().strip()
         if not message:
-            self.chat_display.append("<span style='color: red;'>Please enter a message.</span>")
             return
 
+        # Clear input field
+        self.input_field.clear()
+
+        # Add user message to chat with styling
+        user_html = f"""
+        <div style="margin: 10px 0;">
+            <div style="
+                background-color: #E3F2FD;
+                color: #1565C0;
+                padding: 12px 20px;
+                border-radius: 15px;
+                border-top-right-radius: 5px;
+                margin-left: 20%;
+                margin-right: 0;
+                display: inline-block;
+                max-width: 70%;
+                box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+                font-size: 14px;
+                line-height: 1.5;
+            ">
+                {message}
+            </div>
+        </div>
+        """
+        self.chat_display.append(user_html)
+
         try:
-            if (self.current_phase == "concept"):
+            if self.current_phase == "concept":
+                # Add plot area to the message
                 plot_area = self.get_plot_area()
                 message = f"{message}. Make sure the plot area is {plot_area['area']} m²."
             
-            self.input_field.clear()
+            # Add message to current phase
+            self.phases[self.current_phase].append({"role": "user", "content": message})
 
-            self.phases[self.current_phase].append({'role': 'user', 'content': message})
-            assistant_message = None
-
-
-            if (self.current_phase == "concept"):
+            # Process message based on current phase
+            if self.current_phase == "concept":
                 assistant_message = generate_concept_with_conversation(self.phases[self.current_phase])
                 self.concept = assistant_message
-            elif (self.current_phase == "functions"):
+            elif self.current_phase == "functions":
                 assistant_message = extract_external_functions(self.phases[self.current_phase])
                 json_llm_response = extract_json(assistant_message)
                 self.extracted_functions = json_llm_response["external_functions"]
                 self.set_extracted_functions()
-
                 assistant_message = f"Your requirements have been saved as follows: {json_llm_response}<br>Does this look good? If so, press continue."
-            elif (self.current_phase == "attributes"):
+            elif self.current_phase == "attributes":
                 assistant_message = extract_attributes_with_conversation(self.phases[self.current_phase], self.concept)
                 json_llm_response = extract_json(assistant_message)
                 self.attributes = json_llm_response
-               
                 assistant_message = f"I have added your requirements to the total list of attributes. {json_llm_response}Is this okay? If so, press continue."
-            elif (self.current_phase == "criticism"):
+                
+                # Send geometry and tree data to server
+                self.geometry_data()
+                self.get_tree_data()
+                
+                # Post geometry data to server with proper headers
+                headers = {
+                    'Content-Type': 'application/json'
+                }
+                geometry_data_response = requests.post(
+                    "http://127.0.0.1:5000/geometry_data",
+                    json={"geometry_data": self.design_data},
+                    headers=headers
+                )
+                
+                if geometry_data_response.status_code == 200:
+                    func_data = geometry_data_response.json()
+                    self.chat_display.append(f"""
+                    <div style="margin: 10px 0;">
+                        <div style="
+                            background-color: #E8F5E9;
+                            color: #2E7D32;
+                            padding: 12px 20px;
+                            border-radius: 15px;
+                            margin: 0 20%;
+                            display: inline-block;
+                            max-width: 60%;
+                            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+                            font-size: 14px;
+                            font-style: italic;
+                        ">
+                            Geometry data sent successfully to server. Response: {func_data}
+                        </div>
+                    </div>
+                    """)
+                else:
+                    raise Exception(f"Server returned status code {geometry_data_response.status_code}")
+                
+            elif self.current_phase == "criticism":
                 assistant_message = criticize_courtyard_graph(self.phases[self.current_phase])
                 self.attributes = assistant_message
 
-            # Display the user's message in the chat window
-            user_html = f"""
-            <table width="100%" cellspacing="0" cellpadding="10">
-            <tr>
-                <td align="right">
-                <div style="
-                    background-color:#d1ecf1;
-                    padding:12px;
-                    border-radius:15px;
-                    max-width: 60%;
-                    display:inline-block;
-                    font-size: 16px;">
-                    {message}
-                </div>
-                </td>
-            </tr>
-            </table>
-            """
-            self.chat_display.append(user_html)
-
-            # Display the server's response in the chat window
+            # Add assistant message to chat with styling
             assistant_html = f"""
-            <table width="100%" cellspacing="0" cellpadding="10">
-            <tr>
-                <td align="left">
+            <div style="margin: 10px 0;">
                 <div style="
-                    background-color:#d4edda;
-                    padding:12px;
-                    border-radius:15px;
-                    max-width: 60%;
-                    display:inline-block;
-                    font-size: 16px;">
+                    background-color: #F5F5F5;
+                    color: #212121;
+                    padding: 12px 20px;
+                    border-radius: 15px;
+                    border-top-left-radius: 5px;
+                    margin-right: 20%;
+                    margin-left: 0;
+                    display: inline-block;
+                    max-width: 70%;
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+                    font-size: 14px;
+                    line-height: 1.5;
+                ">
                     {assistant_message}
                 </div>
-                </td>
-            </tr>
-            </table>
+            </div>
             """
             self.chat_display.append(assistant_html)
 
+            # Add assistant message to current phase
+            self.phases[self.current_phase].append({"role": "assistant", "content": assistant_message})
 
-            self.continue_button.show()  # Show continue button for next phase
-            self.update_phase_buttons()
-
-            if self.current_phase == "attributes":
-                self.geometry_data()
-                self.get_tree_data()
-        
-                geometry_data_response = requests.post(
-                    "http://127.0.0.1:5000/geometry_data",
-                    json={"geometry_data": self.design_data}
-                )
-                func_data = geometry_data_response.json()
-                self.chat_display.append(f"<i>Sent geometry data to server. Response: {func_data}</i>")
-
-                tree_data_response = requests.post(
-                    "http://127.0.0.1:5000/send_tree_data",
-                    json={"tree_data": self.tree_data}
-                )
-                self.chat_display.append(f"<i>Sent geometry data to server. Response: {tree_data_response.json()}</i>")
-
+            # Show continue button if needed
+            if self.current_phase in ["functions", "attributes"]:
+                self.continue_button.setVisible(True)
 
         except Exception as e:
-            self.chat_display.append("<span style='color: red;'>Error connecting to the server.</span>")
-            print(f"Error: {e}")
-        
+            error_html = f"""
+            <div style="margin: 10px 0;">
+                <div style="
+                    background-color: #FFEBEE;
+                    color: #C62828;
+                    padding: 12px 20px;
+                    border-radius: 15px;
+                    margin: 0 20%;
+                    display: inline-block;
+                    max-width: 60%;
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+                    font-size: 14px;
+                ">
+                    Error: {str(e)}
+                </div>
+            </div>
+            """
+            self.chat_display.append(error_html)
+
+        # Scroll to bottom
+        self.chat_display.verticalScrollBar().setValue(
+            self.chat_display.verticalScrollBar().maximum()
+        )
 
     def handle_continue(self):
         phases = list(self.phases.keys())
@@ -214,11 +445,11 @@ class FlaskClientChatUI(QMainWindow):
         if current_index < len(phases) - 1:
             self.current_phase = phases[current_index + 1]
             self.chat_display.append(f"<b>Phase changed to:</b> {self.current_phase}")
-            self.continue_button.hide()
+            self.continue_button.setVisible(False)
             self.show_phase_question()
             if self.current_phase == 'graph':
                 self.graph()
-                
+                self.export_csv_button.setVisible(True)  # Show export button when in graph phase
                 
         else:
             self.update_phase_buttons()
@@ -226,25 +457,61 @@ class FlaskClientChatUI(QMainWindow):
     def update_phase_buttons(self):
         phases = list(self.phases.keys())
         current_index = phases.index(self.current_phase)
+        
         # Show "Back" if not at the first phase
-        if current_index > 0:
-            self.back_button.show()
-        else:
-            self.back_button.hide()
+        self.back_button.setVisible(current_index > 0)
+        
         # Show "Continue" if not at the last phase
-        if current_index < len(phases) - 1:
-            self.continue_button.show()
-        else:
-            self.continue_button.hide()
+        self.continue_button.setVisible(current_index < len(phases) - 1)
+        
+        # Force update the layout
+        self.back_button.parent().updateGeometry()
+        self.continue_button.parent().updateGeometry()
 
     def handle_back(self):
         phases = list(self.phases.keys())
         current_index = phases.index(self.current_phase)
         if current_index > 0:
+            # Clear the chat display
+            self.chat_display.clear()
+            
+            # Go back to previous phase
             self.current_phase = phases[current_index - 1]
-            self.chat_display.append(f"<b>Returned to phase:</b> {self.current_phase}")
+            
+            # Hide export button if not in graph phase
+            self.export_csv_button.setVisible(self.current_phase == 'graph')
+            
+            # Show phase change message
+            phase_change_html = f"""
+            <div style="margin: 10px 0;">
+                <div style="
+                    background-color: #FFF3E0;
+                    color: #E65100;
+                    padding: 12px 20px;
+                    border-radius: 15px;
+                    margin: 0 20%;
+                    display: inline-block;
+                    max-width: 60%;
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+                    font-size: 14px;
+                    font-weight: bold;
+                ">
+                    Returned to phase: {self.current_phase}
+                </div>
+            </div>
+            """
+            self.chat_display.append(phase_change_html)
+            
+            # Show the phase question
             self.show_phase_question()
-        self.update_phase_buttons()
+            
+            # Update button visibility
+            self.update_phase_buttons()
+            
+            # If we're going back from graph phase, close the graph window
+            if phases[current_index] == 'graph' and hasattr(self, 'graph_window'):
+                self.graph_window.close()
+                delattr(self, 'graph_window')
 
     def get_plot_area(self):
         try:
@@ -329,16 +596,70 @@ class FlaskClientChatUI(QMainWindow):
         """
         try:
             tree_placement = extract_json(extract_tree_placement(self.concept, self.attributes))
+            print("Extracted tree placement:", tree_placement)
             PWR = extract_json(extract_plant_water_requirement(self.concept, self.attributes, tree_placement))
+            print("Extracted PWR:", PWR)
 
             self.tree_data = {
                 "tree_placement": tree_placement["tree_placement"],
                 "PWR": PWR["pwr"],                
             }
-            print("Tree data aggregated:", self.tree_data)
+            print("Tree data prepared for sending:", self.tree_data)
+
+            # Send tree data to server with proper headers
+            headers = {
+                'Content-Type': 'application/json'
+            }
+            print("Sending tree data to server:", self.tree_data)
+            tree_data_response = requests.post(
+                "http://127.0.0.1:5000/send_tree_data",
+                json=self.tree_data,
+                headers=headers
+            )
+            
+            if tree_data_response.status_code == 200:
+                response_data = tree_data_response.json()
+                print("Server response:", response_data)
+                self.chat_display.append(f"""
+                <div style="margin: 10px 0;">
+                    <div style="
+                        background-color: #E8F5E9;
+                        color: #2E7D32;
+                        padding: 12px 20px;
+                        border-radius: 15px;
+                        margin: 0 20%;
+                        display: inline-block;
+                        max-width: 60%;
+                        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+                        font-size: 14px;
+                        font-style: italic;
+                    ">
+                        Tree data sent successfully to server. Response: {response_data}
+                    </div>
+                </div>
+                """)
+            else:
+                raise Exception(f"Server returned status code {tree_data_response.status_code}")
 
         except Exception as e:
-            self.chat_display.append("<span style='color: red;'>Error extracting geometry data.</span>")
+            error_html = f"""
+            <div style="margin: 10px 0;">
+                <div style="
+                    background-color: #FFEBEE;
+                    color: #C62828;
+                    padding: 12px 20px;
+                    border-radius: 15px;
+                    margin: 0 20%;
+                    display: inline-block;
+                    max-width: 60%;
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+                    font-size: 14px;
+                ">
+                    Error sending tree data: {str(e)}
+                </div>
+            </div>
+            """
+            self.chat_display.append(error_html)
             print(f"Error in tree_data: {e}")
 
     def create_networkx_graph(self, graph_json):
@@ -360,58 +681,64 @@ class FlaskClientChatUI(QMainWindow):
                 self.design_data["pos"]
             )
             llm_output_json = extract_json(llm_output)
-            print("GRAPH INFO", llm_output_json)
-            export_graph_to_csv(llm_output_json)
-            # Show the interactive graph editor pop-up
-            self.show_graph(llm_output_json)
-        except Exception as e:
-            self.chat_display.append("<span style='color: red;'>Error generating graph.</span>")
-            print(f"Error generating graph: {e}")
-
-    def show_graph(self, graph_json):
-        # Create a new window for the graph editor
-        self.graph_window = QMainWindow(self)
-        self.graph_window.setWindowTitle("Graph Editor")
-        self.graph_window.setGeometry(250, 250, 1000, 800)
-
-        # Create the GraphEditor widget (from user-provided code)
-        self.graph_editor = GraphEditor(graph_json)
-
-        # Add a Save button
-        save_button = QPushButton("Save and Send to Grasshopper")
-        save_button.setStyleSheet("font-size: 16px; padding: 8px 20px;")
-        save_button.clicked.connect(self.save_and_send_graph)
-
-        # Layout for the graph window
-        graph_layout = QVBoxLayout()
-        graph_layout.addWidget(self.graph_editor)
-        graph_layout.addWidget(save_button)
-
-        container = QWidget()
-        container.setLayout(graph_layout)
-        self.graph_window.setCentralWidget(container)
-        self.graph_window.show()
-
-    def save_and_send_graph(self):
-        # Save the edited graph to JSON
-        edited_graph = self.graph_editor.get_graph_json()
-        # Convert the edited graph back to design_data_post 
-        design_data_post = self.graph_editor.convert_graph_to_design_data(edited_graph)
-
-        try:
-            response = requests.post(
-                "http://127.0.0.1:5000/geometry_data_post",
-                json={"geometry_data_post": design_data_post}
+            print("Initial graph layout:", llm_output_json)
+            
+            # Create and show the graph window using MainWindow from graph_gh.py
+            self.graph_window = MainWindow(graph_data=llm_output_json)
+            self.graph_window.show()
+            
+            # Send initial graph data to Grasshopper via server
+            headers = {
+                'Content-Type': 'application/json'
+            }
+            graph_response = requests.post(
+                "http://127.0.0.1:5000/graph_data",
+                json={"graph_data": llm_output_json},
+                headers=headers
             )
-            if response.status_code == 200:
-                self.chat_display.append("<span style='color: green;'>Edited design data sent to Grasshopper.</span>")
+            
+            if graph_response.status_code == 200:
+                self.chat_display.append(f"""
+                <div style="margin: 10px 0;">
+                    <div style="
+                        background-color: #E8F5E9;
+                        color: #2E7D32;
+                        padding: 12px 20px;
+                        border-radius: 15px;
+                        margin: 0 20%;
+                        display: inline-block;
+                        max-width: 60%;
+                        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+                        font-size: 14px;
+                        font-style: italic;
+                    ">
+                        Initial graph layout sent to Grasshopper. You can now modify the layout and use the Export button to save your changes.
+                    </div>
+                </div>
+                """)
             else:
-                self.chat_display.append(f"<span style='color: red;'>Failed to send edited data: {response.status_code}</span>")
+                raise Exception(f"Server returned status code {graph_response.status_code}")
+            
         except Exception as e:
-            self.chat_display.append("<span style='color: red;'>Error sending edited data.</span>")
-            print(f"Error sending edited data: {e}")
-        self.graph_window.close()
-
+            error_html = f"""
+            <div style="margin: 10px 0;">
+                <div style="
+                    background-color: #FFEBEE;
+                    color: #C62828;
+                    padding: 12px 20px;
+                    border-radius: 15px;
+                    margin: 0 20%;
+                    display: inline-block;
+                    max-width: 60%;
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+                    font-size: 14px;
+                ">
+                    Error generating or sending graph: {str(e)}
+                </div>
+            </div>
+            """
+            self.chat_display.append(error_html)
+            print(f"Error generating graph: {e}")
 
     def get_graph_json(self):
         nodes = []
@@ -444,6 +771,98 @@ class FlaskClientChatUI(QMainWindow):
         }
         return design_data_post
 
+    def export_graph_to_csv(self):
+        """Export the current graph data to CSV format"""
+        try:
+            # Get the current graph data from the editor after user modifications
+            if not hasattr(self, 'graph_window') or not self.graph_window.editor:
+                raise Exception("No graph data available to export")
+            
+            # Get the current state of the graph from the editor
+            current_graph_data = self.graph_window.editor.get_graph_data()
+            if not current_graph_data:
+                raise Exception("No graph data available in editor")
+            
+            print("Exporting current graph state:", current_graph_data)  # Debug log
+            
+            # Create export directory if it doesn't exist
+            export_dir = os.path.expanduser("~/Downloads/courtyard_graph")
+            os.makedirs(export_dir, exist_ok=True)
+            
+            # Export to CSV using the function from llm_calls
+            nodes_csv, edges_csv = export_graph_to_csv(current_graph_data)
+            
+            if nodes_csv and edges_csv:
+                # Save nodes CSV
+                nodes_path = os.path.join(export_dir, "nodes.csv")
+                with open(nodes_path, 'w') as f:
+                    f.write(nodes_csv)
+                
+                # Save edges CSV
+                edges_path = os.path.join(export_dir, "edges.csv")
+                with open(edges_path, 'w') as f:
+                    f.write(edges_csv)
+                
+                # Also save the current graph state to the server for Grasshopper
+                headers = {
+                    'Content-Type': 'application/json'
+                }
+                graph_response = requests.post(
+                    "http://127.0.0.1:5000/graph_data",
+                    json={"graph_data": current_graph_data},
+                    headers=headers
+                )
+                
+                if graph_response.status_code != 200:
+                    raise Exception(f"Failed to update server with current graph state: {graph_response.status_code}")
+                
+                # Show success message
+                success_html = f"""
+                <div style="margin: 10px 0;">
+                    <div style="
+                        background-color: #E8F5E9;
+                        color: #2E7D32;
+                        padding: 12px 20px;
+                        border-radius: 15px;
+                        margin: 0 20%;
+                        display: inline-block;
+                        max-width: 60%;
+                        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+                        font-size: 14px;
+                        font-style: italic;
+                    ">
+                        Current graph layout exported successfully:<br>
+                        - Nodes: {nodes_path}<br>
+                        - Edges: {edges_path}<br>
+                        - Graph state updated on server for Grasshopper
+                    </div>
+                </div>
+                """
+                self.chat_display.append(success_html)
+            else:
+                raise Exception("Failed to generate CSV data")
+                
+        except Exception as e:
+            error_html = f"""
+            <div style="margin: 10px 0;">
+                <div style="
+                    background-color: #FFEBEE;
+                    color: #C62828;
+                    padding: 12px 20px;
+                    border-radius: 15px;
+                    margin: 0 20%;
+                    display: inline-block;
+                    max-width: 60%;
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+                    font-size: 14px;
+                ">
+                    Error exporting graph to CSV: {str(e)}
+                </div>
+            </div>
+            """
+            self.chat_display.append(error_html)
+            print(f"Error exporting graph to CSV: {e}")
+
 
 def extract_json(body):
     # if body is json then return
@@ -465,11 +884,13 @@ def extract_json(body):
 def export_graph_to_csv(graph_json, out_dir=None):
     """
     Exports two CSV files: nodes.csv and edges.csv from the given graph_json.
+    Also saves the full JSON for Grasshopper to read.
     """
     if out_dir is None:
         out_dir = os.path.expanduser("~/Downloads")
     nodes_path = os.path.join(out_dir, "nodes.csv")
     edges_path = os.path.join(out_dir, "edges.csv")
+    json_path = os.path.join(out_dir, "network_graph.json")
 
     # Write nodes
     with open(nodes_path, "w", newline='') as f_nodes:
@@ -497,8 +918,13 @@ def export_graph_to_csv(graph_json, out_dir=None):
         for edge in graph_json["links"]:
             writer.writerow({"source": edge["source"], "target": edge["target"]})
 
+    # Write full JSON for Grasshopper
+    with open(json_path, "w") as f_json:
+        json.dump(graph_json, f_json, indent=2)
+
     print(f"✅ Nodes CSV saved to: {nodes_path}")
     print(f"✅ Edges CSV saved to: {edges_path}")
+    print(f"✅ Full graph JSON saved to: {json_path}")
 
 
 

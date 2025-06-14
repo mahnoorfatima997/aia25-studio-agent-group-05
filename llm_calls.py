@@ -84,40 +84,39 @@ def extract_spaces(concept, external_functions, attributes):
             {
                 "role": "system",
                 "content": """
-
                         You are a spatial functions extraction assistant.
 
                         Your task is to read the concept and attributes.
 
                         You must then identify the locations of these spaces and estimate the grid points where they are located based on the description.
 
+                        # Space Type Mapping Rules:
+                        - Map any garden spaces to either "flower" or "tree" based on their function
+                        - Map any social/gathering spaces to "play"
+                        - Map any quiet/contemplative spaces to "rest"
+                        - Map any water features to "pond"
+                        - Only use these exact space types: play, rest, pond, flower, tree
+
                         # Output Format:
-                        Return a JSON object, whose value is an object with the following keys:
-                        - play: grid point based on proximity matrix developed in concept description (integer)
-                        - rest: grid point based on proximity matrix developed in concept description (integer)
-                        - pond: grid point based on proximity matrix developed in concept description (integer)
-                        - flower: grid point based on proximity matrix developed in concept description (integer)
-                        - tree: grid point based on proximity matrix developed in concept description (integer)
+                        Return a JSON object with a "spaces" key containing a mapping of space types to their grid points:
+                        {
+                            "spaces": {
+                                "play": 1,    // integer grid point
+                                "rest": 3,    // integer grid point
+                                "pond": 5,    // integer grid point
+                                "flower": 7,  // integer grid point
+                                "tree": 9     // integer grid point
+                            }
+                        }
 
                         # Instructions:
-                        - Each key must be a **concise, lowercase space type** (e.g., "play", "rest", "pond", "flower", "tree").
-                        - Do NOT include textual descriptions.
-                        - Use whole numbers (no decimals).
-                        - If no information is available, omit assigning a number to that category.
-
-                        # Example Output:
-                        {
-                        "spaces": {
-                            "play": 1,
-                            "rest": 3,
-                            "pond": 5,
-                            "flower": 7,
-                            "tree": 9
-                        }
-                        }
-
-                        You must include all 5 areas in every answer. If one of the areas does not have a number, you will enter a 0 next to it.
-                        """,
+                        - Each key must be one of: play, rest, pond, flower, tree
+                        - Each value must be an integer grid point (1-10)
+                        - You must include all 5 spaces
+                        - If a space's location is not specified, assign it a grid point based on its function
+                        - Do not include any explanations or extra text
+                        - Only output the JSON object
+                        """
             },
         ]
     chat_messages.append({
@@ -137,38 +136,55 @@ def extract_spaces(concept, external_functions, attributes):
     response = client.chat.completions.create(
         model=completion_model,
         messages=chat_messages,
-        response_format = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "spaces",
-                    "description": "Extracted spaces and features from the design description",
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "spaces": {
-                                "type": "object",
-                                "properties": {
-                                        "play": {"type": "integer"},
-                                        "rest": {"type": "integer"},
-                                        "pond": {"type": "integer"},
-                                        "flower": {"type": "integer"},
-                                        "tree": {"type": "integer"},
-                                    },
-                                    "required": ["play", "rest", "pond", "flower", "tree"],
-                                    "additionalProperties": False,
-                                }
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "spaces",
+                "description": "Extracted spaces and features from the design description",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "spaces": {
+                            "type": "object",
+                            "properties": {
+                                "play": {"type": "integer"},
+                                "rest": {"type": "integer"},
+                                "pond": {"type": "integer"},
+                                "flower": {"type": "integer"},
+                                "tree": {"type": "integer"},
                             },
-                            "required": ["spaces"],
+                            "required": ["play", "rest", "pond", "flower", "tree"],
                             "additionalProperties": False,
-                        },
-                        
-                    }
+                        }
+                    },
+                    "required": ["spaces"],
+                    "additionalProperties": False,
                 }
+            }
+        }
     )
     print("Response from LLM for spaces:", response.choices[0].message.content)
     return response.choices[0].message.content
 
 def extract_links(concept, external_functions=None):
+    # Ensure external_functions is properly formatted
+    if isinstance(external_functions, str):
+        try:
+            external_functions = json.loads(external_functions)
+        except json.JSONDecodeError:
+            print("Error: external_functions is not valid JSON")
+            external_functions = {}
+    
+    # Extract the external_functions dictionary if it's nested
+    if isinstance(external_functions, dict) and "external_functions" in external_functions:
+        external_functions = external_functions["external_functions"]
+    
+    # Convert external_functions dict to list of names for the LLM
+    external_function_names = list(external_functions.keys()) if external_functions else []
+    
+    # Define allowed courtyard zones
+    ALLOWED_COURTYARD_ZONES = ["play", "rest", "pond", "flower", "tree"]
+    
     chat_messages = [
         {
             "role": "system",
@@ -177,12 +193,12 @@ def extract_links(concept, external_functions=None):
 
                 Build relationships between these functional zones:
 
-                Courtyard zones:
-                - play
-                - rest
-                - pond
-                - flower
-                - tree
+                Courtyard zones (ONLY use these exact names, no variations):
+                - play (for any social or active spaces)
+                - rest (for any quiet or contemplative spaces)
+                - pond (for any water features)
+                - flower (for any garden or planting areas)
+                - tree (for any tree or shade areas)
 
                 External functions:
                 {external_functions}
@@ -191,38 +207,49 @@ def extract_links(concept, external_functions=None):
 
                 1. Design intent (from the concept)
                 2. Functional needs or compatibility (from the attributes)
-                3. General principles of spatial planning (e.g., gathering zones may connect to social zones, calm areas may avoid noisy zones)
-                4. Logical relationships between external functions and courtyard zones (e.g., library might connect to quiet rest areas, cafe might connect to social spaces)
+                3. General principles of spatial planning (e.g., active zones near active zones, quiet areas near quiet areas)
+                4. Logical relationships between external functions and courtyard zones (e.g., library might connect to rest areas, cafe might connect to play areas)
 
                 You are not placing zones spatially. You are only identifying logical adjacency relationships.
 
                 Output Instructions:
-                Output a JSON object with a "links" key containing an array of relationships.
+                Output a JSON object with a "links" key containing an object of relationships.
                 Each relationship should be a pair of zone names that should be connected.
                 Include both courtyard-to-courtyard and external-function-to-courtyard relationships.
 
                 **Example Output:**
-                {"links": {
-                "tree": "pond", "tree": "flower", "play": "rest"}
+                {
+                "links": {
+                    "tree": "pond",
+                    "tree": "flower",
+                    "play": "rest",
+                    "cafe": "play"
+                }
                 }
 
-                Make sure to:
-                1. Include meaningful connections between external functions and courtyard zones
-                2. Consider functional relationships (e.g., quiet spaces near quiet spaces, social spaces near social spaces)
-                3. Include at least one connection for each external function
-                4. Maintain existing courtyard zone relationships
+                Important Rules:
+                1. ONLY use the exact courtyard zone names: play, rest, pond, flower, tree
+                2. Map any social/gathering spaces to "play"
+                3. Map any quiet/contemplative spaces to "rest"
+                4. Map any water features to "pond"
+                5. Map any garden/planting areas to "flower"
+                6. Map any tree/shade areas to "tree"
+                7. Include at least one connection for each external function
+                8. Maintain existing courtyard zone relationships
+
+                Do not use any other names or variations for the courtyard zones.
                 """
             },
         ]
     chat_messages.append({
-        "role": "user",
-        "content": """
-            Concept: {concept}
-            External Functions: {external_functions}
-        """.format(
-            concept=concept,
-            external_functions=external_functions if external_functions else []
-        )
+    "role": "user",
+    "content": """
+        Concept: {concept}
+        External Functions: {external_functions}
+    """.format(
+        concept=concept,
+        external_functions=json.dumps(external_function_names)
+    )
     })
     print("Extracting links ...")
     response = client.chat.completions.create(
@@ -240,13 +267,15 @@ def extract_links(concept, external_functions=None):
                             "type": "object",
                             "description": "Mapping of source nodes to their target nodes",
                             "additionalProperties": {
-                                "type": "string"
+                                "type": "string",
+                                "enum": ALLOWED_COURTYARD_ZONES + external_function_names
                             }
                         }
                     },
                     "required": ["links"],
                     "additionalProperties": False
-            }}
+                }
+            }
         }
     )
 
@@ -332,58 +361,64 @@ def extract_external_functions(conversation_messages):
         {
             "role": "system",
             "content": """
-
                 You are assisting in the spatial design of a courtyard.
 
-                The user will provide a set of functions that are external to the courtyard design. Your task is to identify ONLY the external functions explicitly mentioned by the user and arrange them in a JSON.
+                The user will provide a set of functions that are external to the courtyard design. Your task is to identify the external functions explicitly mentioned by the user and their associated cardinal directions (N, E, S, W) if specified.
+
+                For example, if the user says "cafe on the north side" or "library facing east", you should include both the function and its cardinal direction.
 
                 Do NOT include any courtyard functions or zones in this list. Do NOT add any default or assumed functions. Do NOT include explanations or extra information.
 
                 # Output Instructions:
-                Output only a JSON object with a single key "external_functions", whose value is a list.
+                Output a JSON object with a single key "external_functions", whose value is an object mapping function names to their cardinal directions.
+                Each function name should map to either a cardinal direction (N, E, S, W) or null if no direction is specified.
 
                 # Example Output:
                 {
-                "external_functions": [
-                    "yoga", "school"
-                ]
+                "external_functions": {
+                    "cafe": "N",
+                    "library": "E",
+                    "yoga": null
                 }
+                }
+
+                Only include functions that are explicitly mentioned by the user.
+                Only use N, E, S, W as cardinal directions.
+                If no direction is specified for a function, use null for its direction.
                 """
             },
-        ]
+        
+    ]
     chat_messages.extend(conversation_messages)
     print("Extracting functions with conversation history...", chat_messages)
     response = client.chat.completions.create(
         model=completion_model,
         messages=chat_messages,
-        response_format=
-                {
-                    "type": "json_schema",
-                    "json_schema":{
-                        "name": "external_functions",
-                        "schema": {
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "external_functions",
+                "description": "External functions and their cardinal directions",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "external_functions": {
                             "type": "object",
-                            "properties": {
-                            "external_functions": {
-                                "type": "array",
-                                "description": "List of external functions.",
-                                "items": {
-                                    "type": "string",
-                                    "description": "The function name."
-                                    }
-                                }
-                            },
-                            "required": [
-                            "external_functions"
-                            ],
-                            "additionalProperties": False
-                        },
-                        "strict": True
-                    }
+                            "additionalProperties": {
+                                "oneOf": [
+                                    {"type": "string", "enum": ["N", "E", "S", "W"]},
+                                    {"type": "null"}
+                                ]
+                            }
+                        }
+                    },
+                    "required": ["external_functions"]
                 }
+            }
+        }
     )
 
-    print("Response from LLM for external_functions:", response.choices[0].message.content)
+    print("Response from LLM:", response.choices[0].message.content)
     return response.choices[0].message.content
 
 
@@ -751,6 +786,30 @@ def extract_pos(concept, external_functions):
 
 def assemble_courtyard_graph(spaces, external_functions, weights, anchors, positions, links, cardinal_directions, pos):
     print("Assembling courtyard graph....")
+    # Ensure spaces is a dictionary
+    if isinstance(spaces, str):
+        try:
+            spaces = json.loads(spaces)
+        except json.JSONDecodeError:
+            print("Error: spaces is not valid JSON")
+            return None
+    
+    # Extract the spaces dictionary if it's nested
+    if isinstance(spaces, dict) and "spaces" in spaces:
+        spaces = spaces["spaces"]
+    
+    # Ensure pos is a dictionary
+    if isinstance(pos, str):
+        try:
+            pos = json.loads(pos)
+        except json.JSONDecodeError:
+            print("Error: pos is not valid JSON")
+            return None
+    
+    # Extract the pos dictionary if it's nested
+    if isinstance(pos, dict) and "pos" in pos:
+        pos = pos["pos"]
+    
     chat_messages = [
         {
             "role": "system",
@@ -758,14 +817,14 @@ def assemble_courtyard_graph(spaces, external_functions, weights, anchors, posit
                 You are a spatial graph assembly assistant for courtyard design.
 
                 Given:
-                - A list of internal spaces: {spaces}
-                - A list of external functions: {external_functions}
+                - A dictionary of internal spaces and their grid points: {spaces}
+                - A dictionary of external functions with their cardinal directions: {external_functions}
                 - A dictionary of weights for each node: {weights}
-                - A list of anchor node names: {anchors}
+                - A dictionary of anchor node names: {anchors}
                 - A dictionary of positions for each node: {positions}
                 - A dictionary of X and Y coordinates for each node: {pos}
-                - A list of links (edges) as [source, target] pairs: {links}
-                - A list of cardinal directions for each node: {cardinal_directions}
+                - A dictionary of links (edges): {links}
+                - A dictionary of cardinal directions for each node: {cardinal_directions}
 
                 Your task is to output a single JSON object with the following structure:
 
@@ -776,8 +835,8 @@ def assemble_courtyard_graph(spaces, external_functions, weights, anchors, posit
                 "nodes": [
                     {
                     "id": "node_name",
-                    "pos": {"x": ..., "y": ..., "z": ...},
-                    "weight": ...,
+                    "pos": {"x": number, "y": number, "z": 0},  // x and y must be numbers, never null
+                    "weight": number,  // must be a number, never null
                     "anchor": true/false
                     },
                     ...
@@ -788,7 +847,27 @@ def assemble_courtyard_graph(spaces, external_functions, weights, anchors, posit
                 ]
                 }
 
-                Only use the provided data. Do not invent or assume any values. Output only the JSON object, nothing else.
+                Important Rules:
+                1. NEVER use null/None for x, y coordinates or weights
+                2. For any missing coordinates, use default values:
+                   - For courtyard spaces (play, rest, pond, flower, tree): use values from pos dictionary
+                   - For external functions: 
+                     * If a cardinal direction is specified, place the function at the appropriate edge:
+                       - N: y = 0, x = 5
+                       - E: x = 10, y = 5
+                       - S: y = 10, x = 5
+                       - W: x = 0, y = 5
+                     * If no direction is specified, assign coordinates between 0-10
+                3. For any missing weights:
+                   - For courtyard spaces: use values from weights dictionary
+                   - For external functions: assign a default weight of 5
+                   - For the "open" node: assign a default weight of 1
+                4. All coordinates must be numbers between 0 and 10
+                5. All weights must be numbers between 1 and 10
+                6. Include the "open" node if it exists in the pos dictionary, with its specified coordinates
+
+                Only use the provided data. Do not invent or assume any values except for the defaults specified above.
+                Output only the JSON object, nothing else.
                 """
         },
     ]
@@ -804,20 +883,68 @@ def assemble_courtyard_graph(spaces, external_functions, weights, anchors, posit
         cardinal_directions: {cardinal_directions}
         pos: {pos}
     """.format(
-        spaces=spaces,
-        external_functions=external_functions,
-        weights=weights,
-        anchors=anchors,
-        positions=positions,
-        links=links,
-        cardinal_directions=cardinal_directions,
-        pos=pos
+        spaces=json.dumps(spaces),
+        external_functions=json.dumps(external_functions),
+        weights=json.dumps(weights),
+        anchors=json.dumps(anchors),
+        positions=json.dumps(positions),
+        links=json.dumps(links),
+        cardinal_directions=json.dumps(cardinal_directions),
+        pos=json.dumps(pos)
     )
     })
     print("Assembling courtyard graph with conversation history...", chat_messages)
     response = client.chat.completions.create(
         model=completion_model,
-        messages=chat_messages
+        messages=chat_messages,
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "courtyard_graph",
+                "description": "Graph representation of courtyard spaces and their relationships",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "directed": {"type": "boolean"},
+                        "multigraph": {"type": "boolean"},
+                        "graph": {"type": "object"},
+                        "nodes": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {"type": "string"},
+                                    "pos": {
+                                        "type": "object",
+                                        "properties": {
+                                            "x": {"type": "number"},
+                                            "y": {"type": "number"},
+                                            "z": {"type": "number"}
+                                        },
+                                        "required": ["x", "y", "z"]
+                                    },
+                                    "weight": {"type": "number"},
+                                    "anchor": {"type": "boolean"}
+                                },
+                                "required": ["id", "pos", "weight", "anchor"]
+                            }
+                        },
+                        "links": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "source": {"type": "string"},
+                                    "target": {"type": "string"}
+                                },
+                                "required": ["source", "target"]
+                            }
+                        }
+                    },
+                    "required": ["directed", "multigraph", "graph", "nodes", "links"]
+                }
+            }
+        }
     )
 
     print("Response from LLM for assemble_courtyard_graph:", response.choices[0].message.content)
@@ -1133,4 +1260,5 @@ A sunlit courtyard with a central calm area (grid 10,10), social zones to the so
         messages=messages
     )
     return response.choices[0].message.content
+
 

@@ -16,6 +16,7 @@ generated_spaces = None
 geometry_data = None
 design_data = None
 tree_data = None
+graph_data = None
 width = None
 length = None
 
@@ -30,8 +31,6 @@ def get_plot_area():
     else:  # GET
         return jsonify({"area": area, "width": width, "length": length})
     
-
-
 @app.route('/external_functions', methods=['POST', 'GET'])
 def handle_external_functions():
     global external_functions
@@ -45,8 +44,6 @@ def handle_external_functions():
             return jsonify({"error": "No functions available. Please call POST first."})
         else:
             return jsonify({"external_functions": external_functions})
-
-
 
 @app.route('/spaces', methods=['POST', 'GET'])
 def handle_generated_spaces():
@@ -62,10 +59,6 @@ def handle_generated_spaces():
         else:
             return jsonify({"spaces_generated": generated_spaces})
         
-
-
-
-
 @app.route('/geometry_data', methods=['POST'])
 def set_geometry_data():
     global design_data
@@ -77,34 +70,41 @@ def set_geometry_data():
 @app.route('/geometry_data', methods=['GET'])
 def get_geometry_data():
     return jsonify({"geometry_data": design_data})
-
-@app.route('/geometry_data_post', methods=['GET','POST'])
-def set_geometry_data_post():
-    global design_data_post
-    if request.method == 'POST':
-        design_data_post = request.json.get('geometry_data_post', {})
-        return jsonify({"status": "ok"})
-    else: 
-        # Return the last posted geometry_data_post
-        return jsonify({"geometry_data_post": design_data_post if 'design_data_post' in globals() else {}})
-    
-
-
-
-
+ 
 @app.route('/send_tree_data', methods=['GET','POST'])
 def set_tree_data():
     global tree_data
-    print("Received JSON tree:", request.json)
     if request.method == 'POST':
-        tree_data = request.json.get('send_tree_data', {})
-        return jsonify({"status": "ok"})
-    else:  # GET
-        # Return the last posted tree_data
-        return jsonify({"send_tree_data": tree_data if 'tree_data' in globals() else {}})
+        # Only UI or Python app should POST here, not Grasshopper
+        if not request.is_json:
+            return jsonify({"error": "Content-Type must be application/json. Please POST JSON from your UI or Python app, not from Grasshopper."}), 415
+        print("Received JSON tree:", request.json)
+        # Accept both formats: direct tree_data or wrapped in send_tree_data
+        tree_data = request.json.get('send_tree_data', request.json)
+        print("Stored tree_data:", tree_data)
+        return jsonify({"status": "ok", "tree_data": tree_data})
+    else:
+        # Grasshopper should only GET here to retrieve the latest tree data
+        print("Returning tree_data:", tree_data)
+        return jsonify({
+            "tree_placement": tree_data.get("tree_placement", {}) if tree_data else {},
+            "PWR": tree_data.get("PWR", {}) if tree_data else {}
+        })
     
-
-
+@app.route('/graph_data', methods=['GET', 'POST'])
+def handle_graph_data():
+    global graph_data
+    if request.method == 'POST':
+        print("POST request received for graph data. Raw JSON:", request.json)
+        graph_data = request.json.get('graph_data', request.json)
+        print("Stored graph_data:", graph_data)
+        return jsonify({"status": "ok", "graph_data": graph_data})
+    else:  # GET
+        print("GET request received for graph data. Current data:", graph_data)
+        if graph_data is None:
+            return jsonify({"error": "No graph data available. Please generate a graph first."})
+        # Return the entire graph data structure as one JSON object
+        return jsonify(graph_data)  # Send the complete graph data structure
 
 
 def run_flask():
