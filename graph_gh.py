@@ -5,10 +5,10 @@ import random
 from PyQt5.QtWidgets import (
     QApplication, QGraphicsView, QGraphicsScene, QGraphicsEllipseItem,
     QGraphicsLineItem, QGraphicsTextItem, QMainWindow, QVBoxLayout, QHBoxLayout,
-    QWidget, QPushButton, QComboBox, QLabel, QMessageBox
+    QWidget, QPushButton, QComboBox, QLabel, QMessageBox, QGraphicsItem
 )
 from PyQt5.QtGui import QPen, QBrush, QFont, QPainter, QColor
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QPointF
 from matplotlib import colormaps
 from ui_pyqt import *
 
@@ -84,6 +84,21 @@ class NodeItem(QGraphicsEllipseItem):
                     if not item.anchor:
                         item.moveBy(-nx * overlap / 2, -ny * overlap / 2)
 
+    def itemChange(self, change, value):
+        if change == QGraphicsItem.ItemPositionChange and self.scene():
+            # Get the new position
+            new_pos = value
+            # Get the parent GraphEditor
+            editor = self.scene().views()[0]
+            if isinstance(editor, GraphEditor):
+                # Transform to grid coordinates and clamp
+                grid_x, grid_y = editor.transform_to_grid_coords(new_pos.x(), new_pos.y())
+                # Transform back to scene coordinates
+                scene_x, scene_y = editor.transform_to_scene_coords(grid_x, grid_y)
+                # Return the clamped scene position
+                return QPointF(scene_x, scene_y)
+        return super().itemChange(change, value)
+
 
 class EdgeItem(QGraphicsLineItem):
     def __init__(self, node1, node2):
@@ -127,39 +142,73 @@ class GraphEditor(QGraphicsView):
         # Define size conversion constants
         self.WEIGHT_TO_RADIUS = 5  # Multiply weight by this to get radius
         self.RADIUS_TO_WEIGHT = 1/self.WEIGHT_TO_RADIUS  # Divide radius by this to get weight
+        
+        # Define coordinate ranges
+        self.X_MIN = -34
+        self.X_MAX = -4
+        self.Y_MIN = 30
+        self.Y_MAX = 60
+        self.X_RANGE = self.X_MAX - self.X_MIN
+        self.Y_RANGE = self.Y_MAX - self.Y_MIN
+        
         self.load_graph(graph_data)
         self.add_cardinal_directions()
 
     def add_cardinal_directions(self):
-        # Add cardinal direction nodes
+        # Add cardinal direction nodes at the edges of the grid
         directions = {
-            "N": (500, 50),   # North at top
-            "E": (950, 400),  # East at right
-            "S": (500, 750),  # South at bottom
-            "W": (50, 400)    # West at left
+            "N": ((self.X_MIN + self.X_MAX)/2, self.Y_MAX),  # North at top
+            "E": (self.X_MIN, (self.Y_MIN + self.Y_MAX)/2),  # East at right
+            "S": ((self.X_MIN + self.X_MAX)/2, self.Y_MIN),  # South at bottom
+            "W": (self.X_MAX, (self.Y_MIN + self.Y_MAX)/2)   # West at left
         }
         
         for direction, (x, y) in directions.items():
-            item = NodeItem(direction, x, y, True, direction, QColor("black"), 30)
-            item.label.setDefaultTextColor(Qt.black)  # Set text color to black
+            # Transform coordinates to scene coordinates
+            scene_x, scene_y = self.transform_to_scene_coords(x, y)
+            item = NodeItem(direction, scene_x, scene_y, True, direction, QColor("black"), 30)
+            item.label.setDefaultTextColor(Qt.black)
             self.scene().addItem(item)
             self.nodes[direction] = item
 
+    def transform_to_scene_coords(self, x, y):
+        """Transform grid coordinates to scene coordinates"""
+        # Normalize x from [-34, -4] to [0, 1]
+        normalized_x = (x - self.X_MIN) / self.X_RANGE
+        # Normalize y from [30, 60] to [0, 1]
+        normalized_y = (y - self.Y_MIN) / self.Y_RANGE
+        
+        # Transform to scene coordinates
+        scene_x = normalized_x * 700 + 150
+        scene_y = (1 - normalized_y) * 500 + 150  # Invert y for screen coordinates
+        return scene_x, scene_y
+
+    def transform_to_grid_coords(self, scene_x, scene_y):
+        """Transform scene coordinates to grid coordinates"""
+        # Convert scene coordinates to normalized coordinates [0, 1]
+        normalized_x = (scene_x - 150) / 700
+        normalized_y = 1 - (scene_y - 150) / 500  # Invert y for grid coordinates
+        
+        # Convert normalized coordinates to grid coordinates
+        grid_x = normalized_x * self.X_RANGE + self.X_MIN
+        grid_y = normalized_y * self.Y_RANGE + self.Y_MIN
+        
+        # Clamp values to valid ranges
+        grid_x = max(self.X_MIN, min(self.X_MAX, grid_x))
+        grid_y = max(self.Y_MIN, min(self.Y_MAX, grid_y))
+        return grid_x, grid_y
+
     def load_graph(self, data):
-        xs = [n["pos"]["x"] for n in data["nodes"]]
-        ys = [n["pos"]["y"] for n in data["nodes"]]
-        min_x, max_x = min(xs), max(xs)
-        min_y, max_y = min(ys), max(ys)
-
-        def transform(x, y):
-            # Adjust the transformation to leave space for cardinal directions
-            sx = (x - min_x) / (max_x - min_x + 1e-5) * 700 + 150  # Reduced width to 700, offset by 150
-            sy = (1 - (y - min_y) / (max_y - min_y + 1e-5)) * 500 + 150  # Reduced height to 500, offset by 150
-            return sx, sy
-
         for i, node in enumerate(data["nodes"]):
             nid = node["id"]
-            x, y = transform(node["pos"]["x"], node["pos"]["y"])
+            # Get coordinates from node data
+            x, y = node["pos"]["x"], node["pos"]["y"]
+            # Clamp coordinates to valid ranges
+            x = max(self.X_MIN, min(self.X_MAX, x))
+            y = max(self.Y_MIN, min(self.Y_MAX, y))
+            # Transform to scene coordinates
+            scene_x, scene_y = self.transform_to_scene_coords(x, y)
+            
             anchor = node.get("anchor", False)
             weight = node.get("weight", 4)  # Default weight of 4 gives radius of 20
             # Scale weight to a reasonable node size (between 30 and 100)
@@ -171,8 +220,8 @@ class GraphEditor(QGraphicsView):
                 rgba = self.summer(i / max(1, len(data["nodes"]) - 1))
                 color = QColor.fromRgbF(*rgba[:3])
 
-            item = NodeItem(nid, x, y, anchor, nid, color, node_size)
-            item.label.setDefaultTextColor(Qt.black)  # Set text color to black
+            item = NodeItem(nid, scene_x, scene_y, anchor, nid, color, node_size)
+            item.label.setDefaultTextColor(Qt.black)
             self.scene().addItem(item)
             self.nodes[nid] = item
 
@@ -245,10 +294,13 @@ class GraphEditor(QGraphicsView):
             if nid in ["N", "E", "S", "W"]:
                 continue
                 
-            x, y = item.scenePos().x(), item.scenePos().y()
+            # Get scene coordinates and transform to grid coordinates
+            scene_x, scene_y = item.scenePos().x(), item.scenePos().y()
+            grid_x, grid_y = self.transform_to_grid_coords(scene_x, scene_y)
+            
             node_data = {
                 "id": nid,
-                "pos": {"x": round(x, 2), "y": round(y, 2)},
+                "pos": {"x": round(grid_x, 2), "y": round(grid_y, 2)},
                 "anchor": item.anchor
             }
             if not item.anchor:

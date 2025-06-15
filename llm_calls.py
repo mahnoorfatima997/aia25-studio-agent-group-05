@@ -664,7 +664,6 @@ def extract_anchors(concept, external_functions, attributes):
         {
             "role": "system",
             "content": """
-
                 You are assisting in the spatial design of a courtyard.
 
                 The user has already provided a design concept, extracted spatial attributes, and a list of functional zones with inferred adjacency relationships earlier in this conversation. The courtyard is divided into discrete numbered cells.
@@ -673,12 +672,21 @@ def extract_anchors(concept, external_functions, attributes):
 
                 Make a list of the {external_functions} provided by the user and the existing spaces (i.e tree, pond, flower, rest, play) generated for the courtyard.
 
-                Assign which function zones should be anchored and which should not be. Provide your output in the form of true/false.
+                IMPORTANT: You MUST select AT LEAST 4 spaces/functions to be anchors. These should be the most strategically important locations in the courtyard design.
+                Consider:
+                1. Entry points and main circulation paths
+                2. Key functional spaces that define the courtyard's character
+                3. Spaces that need to be fixed in place for optimal design
+                4. Spaces that serve as focal points or landmarks
+                5. Additional spaces that would benefit from being anchored for design stability
+
+                Provide your output in the form of true/false, with AT LEAST 4 spaces marked as "true".
                 
                 **Example Output:**
-                {"anchors": {"tree": "true", "pond": "true", "kindergarden": "false", "yoga": "false"}}
+                {"anchors": {"tree": "true", "pond": "true", "kindergarden": "true", "yoga": "true", "play": "true", "rest": "false"}}
 
                 DO NOT use any other spaces apart from the external_functions and the courtyard zones.
+                You MUST select AT LEAST 4 anchors, but you can select more if it would improve the design stability.
                 """,
             },
         ]
@@ -703,15 +711,28 @@ def extract_anchors(concept, external_functions, attributes):
                     "type": "json_schema",
                     "json_schema": {
                         "name": "anchors",
-                        "description": "Boolean values showing which spaces/functions are anchors.",
+                        "description": "Boolean values showing which spaces/functions are anchors. Must have at least 4 true values.",
                         "schema": {
                             "type": "object",
-                            "properties": {},
-                            "description": "Boolean values showing which spaces/functions are anchors.",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        },
+                            "properties": {
+                                "anchors": {
+                                    "type": "object",
+                                    "description": "Mapping of space/function names to boolean anchor status",
+                                    "additionalProperties": {
+                                        "type": "string",
+                                        "enum": ["true", "false"]
+                                    },
+                                    "custom_validator": {
+                                        "validate_anchor_count": {
+                                            "description": "Must have at least 4 true values",
+                                            "validate": "function(obj) { return Object.values(obj).filter(v => v === 'true').length >= 4; }"
+                                        }
+                                    }
+                                }
+                            },
+                            "required": ["anchors"],
+                            "additionalProperties": False
+                        }
                     }
                 }  
         )
@@ -724,21 +745,27 @@ def extract_pos(concept, external_functions):
         {
             "role": "system",
             "content": """
-
                 You are assisting in the spatial design of a courtyard.
 
                 The user has already provided enough information for you to extract.
 
                 Your task now is to make a list of the areas (pond, tree, flower, play, rest) and functions {external_functions} we are working with, and add to it a position on a 2D grid. You must consider all other information before deciding on the placement of each.
 
+                IMPORTANT: The grid coordinates must follow these ranges:
+                - x coordinates range from -34 to -4
+                - y coordinates range from 30 to 60
+                - Use the full range to distribute spaces effectively
+                - Consider the relationships between spaces when assigning coordinates
+                - Place related spaces closer together
+                - Use the grid space efficiently
+
                 DO NOT output any extra information or text, only the JSON with the data. Make sure you add the external_functions as well as the courtyard areas.
 
                 #EXAMPLE OUTPUT
-
-                {"pos": {"tree": [1, 2], "yoga": [4, 9], "open": [2, 6]}}
+                {"pos": {"tree": [-20, 45], "yoga": [-15, 35], "open": [-25, 50]}}
 
                 Make sure you ALWAYS output positions. DO NOT include any extra data. ONLY output X and Y coordinates of functional zones and external functions.
-                DO NOT give null values. Always numbers.
+                DO NOT give null values. Always use numbers within the specified ranges.
                 """,
             },
         ]
@@ -766,11 +793,15 @@ def extract_pos(concept, external_functions):
                             "properties": {
                                 "pos": {
                                     "type": "object",
-                                    "description": "Mapping of zone/function names to [x, y] coordinates.",
+                                    "description": "Mapping of zone/function names to [x, y] coordinates. x must be between -34 and -4, y must be between 30 and 60.",
                                     "additionalProperties": {
                                         "type": "array",
-                                        "description": "Array of two numbers [x, y]",
-                                        "items": {"type": "number"},
+                                        "description": "Array of two numbers [x, y] where -34 <= x <= -4 and 30 <= y <= 60",
+                                        "items": {
+                                            "type": "number",
+                                            "minimum": -34,
+                                            "maximum": -4
+                                        },
                                         "minItems": 2,
                                         "maxItems": 2
                                     }
@@ -835,8 +866,8 @@ def assemble_courtyard_graph(spaces, external_functions, weights, anchors, posit
                 "nodes": [
                     {
                     "id": "node_name",
-                    "pos": {"x": number, "y": number, "z": 0},  // x and y must be numbers, never null
-                    "weight": number,  // must be a number, never null
+                    "pos": {"x": number, "y": number, "z": 0},  // x must be between -34 and -4, y must be between 30 and 60
+                    "weight": number,  // must be a number between 1 and 10
                     "anchor": true/false
                     },
                     ...
@@ -853,18 +884,21 @@ def assemble_courtyard_graph(spaces, external_functions, weights, anchors, posit
                    - For courtyard spaces (play, rest, pond, flower, tree): use values from pos dictionary
                    - For external functions: 
                      * If a cardinal direction is specified, place the function at the appropriate edge:
-                       - N: y = 0, x = 5
-                       - E: x = 10, y = 5
-                       - S: y = 10, x = 5
-                       - W: x = 0, y = 5
-                     * If no direction is specified, assign coordinates between 0-10
+                       - N: y = 60, x = -19 (middle of x range)
+                       - E: x = -34, y = 45 (middle of y range)
+                       - S: y = 30, x = -19 (middle of x range)
+                       - W: x = -4, y = 45 (middle of y range)
+                     * If no direction is specified, assign coordinates within the valid ranges
                 3. For any missing weights:
                    - For courtyard spaces: use values from weights dictionary
                    - For external functions: assign a default weight of 5
                    - For the "open" node: assign a default weight of 1
-                4. All coordinates must be numbers between 0 and 10
+                4. All coordinates MUST be within the specified ranges:
+                   - x coordinates must be between -34 and -4
+                   - y coordinates must be between 30 and 60
                 5. All weights must be numbers between 1 and 10
                 6. Include the "open" node if it exists in the pos dictionary, with its specified coordinates
+                7. If any coordinates from pos dictionary are outside the valid ranges, scale them proportionally to fit within the ranges
 
                 Only use the provided data. Do not invent or assume any values except for the defaults specified above.
                 Output only the JSON object, nothing else.
@@ -917,13 +951,25 @@ def assemble_courtyard_graph(spaces, external_functions, weights, anchors, posit
                                     "pos": {
                                         "type": "object",
                                         "properties": {
-                                            "x": {"type": "number"},
-                                            "y": {"type": "number"},
+                                            "x": {
+                                                "type": "number",
+                                                "minimum": -34,
+                                                "maximum": -4
+                                            },
+                                            "y": {
+                                                "type": "number",
+                                                "minimum": 30,
+                                                "maximum": 60
+                                            },
                                             "z": {"type": "number"}
                                         },
                                         "required": ["x", "y", "z"]
                                     },
-                                    "weight": {"type": "number"},
+                                    "weight": {
+                                        "type": "number",
+                                        "minimum": 1,
+                                        "maximum": 10
+                                    },
                                     "anchor": {"type": "boolean"}
                                 },
                                 "required": ["id", "pos", "weight", "anchor"]
