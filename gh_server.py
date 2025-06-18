@@ -6,6 +6,8 @@ import threading
 import sys
 from ui_pyqt import FlaskClientChatUI  
 from PyQt5.QtWidgets import QApplication
+from graph_query import GraphQueryEngine
+import os
 
 
 app = Flask(__name__)
@@ -19,6 +21,7 @@ tree_data = None
 graph_data = None
 width = None
 length = None
+query_engine = None  # Global variable for the graph query engine
 
 @app.route('/plot_area', methods=['GET', 'POST'])
 def get_plot_area():
@@ -107,6 +110,140 @@ def handle_graph_data():
         return jsonify(graph_data)  # Send the complete graph data structure
 
 
+# Graph Query Endpoints
+@app.route('/graph_query/load_data', methods=['POST'])
+def load_graph_data():
+    """Load CSV data into Neo4j for graph querying"""
+    global query_engine
+    try:
+        # Initialize the query engine
+        query_engine = GraphQueryEngine()
+        
+        if not query_engine.driver:
+            return jsonify({
+                "success": False,
+                "error": "Failed to connect to Neo4j database. Please ensure Neo4j is running."
+            }), 500
+        
+        # Load CSV data
+        if query_engine.load_csv_to_neo4j():
+            return jsonify({
+                "success": True,
+                "message": "Graph data loaded successfully!"
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": "Failed to load graph data. Please ensure CSV files exist."
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Error loading graph data: {str(e)}"
+        }), 500
+
+
+@app.route('/graph_query/sample_questions', methods=['GET'])
+def get_sample_questions():
+    """Get sample questions for the loaded graph"""
+    global query_engine
+    try:
+        if not query_engine:
+            return jsonify({
+                "success": False,
+                "error": "Please load graph data first."
+            }), 400
+        
+        sample_questions = query_engine.get_sample_questions()
+        return jsonify({
+            "success": True,
+            "questions": sample_questions
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Error getting sample questions: {str(e)}"
+        }), 500
+
+
+@app.route('/graph_query/ask', methods=['POST'])
+def ask_graph_question():
+    """Ask a question about the graph data"""
+    global query_engine
+    try:
+        if not query_engine:
+            return jsonify({
+                "success": False,
+                "error": "Please load graph data first."
+            }), 400
+        
+        data = request.get_json()
+        question = data.get('question', '').strip()
+        
+        if not question:
+            return jsonify({
+                "success": False,
+                "error": "Question cannot be empty."
+            }), 400
+        
+        # Get response from query engine
+        human_answer, cypher_query, raw_data = query_engine.ask_question(question)
+        
+        return jsonify({
+            "success": True,
+            "question": question,
+            "cypher_query": cypher_query,
+            "raw_data": raw_data,
+            "human_answer": human_answer
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Error processing question: {str(e)}"
+        }), 500
+
+
+@app.route('/graph_query/status', methods=['GET'])
+def get_query_status():
+    """Get the status of the graph query engine"""
+    global query_engine
+    try:
+        if not query_engine:
+            return jsonify({
+                "connected": False,
+                "message": "Graph Query Engine not initialized"
+            })
+        
+        if not query_engine.driver:
+            return jsonify({
+                "connected": False,
+                "message": "Neo4j not connected"
+            })
+        
+        # Test connection
+        try:
+            with query_engine.driver.session() as session:
+                session.run("RETURN 1")
+            return jsonify({
+                "connected": True,
+                "message": "Connected to Neo4j"
+            })
+        except:
+            return jsonify({
+                "connected": False,
+                "message": "Neo4j connection failed"
+            })
+            
+    except Exception as e:
+        return jsonify({
+            "connected": False,
+            "message": f"Error: {str(e)}"
+        })
+
+
 def run_flask():
     app.run(debug=False, use_reloader=False)  # Run Flask server in a separate thread
 
@@ -118,7 +255,7 @@ if __name__ == '__main__':
 
     # Start PyQt application
     app = QApplication(sys.argv)
-    app.setStyleSheet("QWidget { font-size: 14px; }") 
+    app.setStyleSheet("QWidget { font-size: 16px; }") 
     window = FlaskClientChatUI()
     window.show()
     sys.exit(app.exec_())

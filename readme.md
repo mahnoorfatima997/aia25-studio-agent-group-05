@@ -9,50 +9,69 @@ The project follows a modular directory structure, which allows for easy extensi
 ```
 AIA25-Studio-Agent/
 │
-├── llm_calls.py              # Contains all the calls to the LLM API with different system prompts.
-├── main.py                   # The main pipeline that orchestrates calling LLM functions and contains business logic.
-│
-├── utils/                    # Utility functions.
-│   ├──  rag_utils.py          # Functions related to Retrieval-Augmented Generation (RAG).
-│   └── llm_calls.gh           # An example Grasshopper script calling this project as a Flask App.
-│
-├── server/                   # Server-side logic.
-│   ├── keys.py               # API keys (not uploaded to GitHub, must be created locally).
-│   ├── config.py             # Contains the logic to decide if the project runs with a local or cloud LLM.
-│   └── gh_server.py          # A Flask App server that answers Grasshopper requests.
-│
-├── knowledge/                # Directory for knowledge databases.
-│   └── embeddings.json       # Storage for embeddings.
+├── gh_server.py              # Integrated Flask server with UI and Graph Query
+├── ui_pyqt.py               # PyQt5 UI with Design Assistant and Graph Query tabs
+├── graph_query.py           # Graph query engine using OpenAI API
+├── llm_calls.py             # LLM integration functions
+├── graph_gh.py              # Graph visualization
+├── test_integrated_server.py # Test script for the integrated system
+├── start_integrated_system.py # Startup script with dependency checks
+├── diagnose_connection.py   # Connection diagnostic tool
+└── README_INTEGRATED.md     # Comprehensive documentation
 ```
 
-## Getting Started
+## Features
 
-### Installation
+### Design Assistant
+- Interactive chat interface for courtyard design
+- Multi-phase design process (concept, functions, attributes, graph, criticism)
+- Graph visualization and editing
+- Export functionality for Grasshopper integration
 
-To get started, clone this repository to your local machine:
+### Graph Query (New!)
+- Natural language queries for graph analysis
+- Neo4j database integration
+- LLM-powered query generation and interpretation
+- Sample questions and query suggestions
+- Real-time graph exploration
 
-```bash
-git clone https://github.com/your-username/aia25-studio-agent.git
-cd aia25-studio-agent
-```
+## 🚀 Quick Start
 
-Then, install the required dependencies:
+1. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-```bash
-pip install -r requirements.txt
-```
+2. **Set up Neo4j (for Graph Query functionality):**
+   - Download and install [Neo4j Desktop](https://neo4j.com/download/)
+   - Create a new project and database
+   - Start the database
+   - Set your password (default username: neo4j)
 
-### Configuration
+3. **Configure API keys:**
+   - Copy `server/keys_template.py` to `server/keys.py`
+   - Add your OpenAI API key
 
-1. **API Keys**  
-   - Navigate to the `server/` directory and create a `keys.py` file.  
-   - Add your API keys or authentication credentials here. This file is not uploaded to GitHub for security reasons.
+4. **Start the integrated system:**
+   ```bash
+   python gh_server.py
+   ```
 
-2. **Local or Cloud LLM Configuration**  
-   - In the `server/config.py` file, you will find the logic to switch between using a local LLM or a cloud-based LLM.  
-   - Customize this file to select the appropriate LLM for your project. You can add any new local models in this configuration file.
+## Graph Query Feature
 
-### Working with the Code
+The new Graph Query feature allows you to explore your generated courtyard designs using natural language. After generating a graph and exporting it to CSV:
+
+1. Switch to the "Graph Query" tab
+2. Click "Load Graph Data" to load your CSV files into Neo4j
+3. Ask questions like:
+   - "How many nodes are in the graph?"
+   - "Which nodes have the highest weight?"
+   - "Show me all anchored nodes"
+   - "What are the connections between play and rest areas?"
+
+For detailed instructions, see [GRAPH_QUERY_README.md](GRAPH_QUERY_README.md).
+
+## Working with the Code
 
 - **Adding New LLM Calls**  
   If you need to add new LLM calls, modify the `llm_calls.py` file. This file is where you define different system prompts and interface with the LLM API.
@@ -61,10 +80,13 @@ pip install -r requirements.txt
   To add new knowledge databases (such as post-processed embeddings), place the new JSON files in the `knowledge/` directory. Modify `embeddings.json` or add new files To learn how to create the embeddings, visit my other repository [Knowledge-Pool-RAG](https://github.com/jomiguelcarv/LLM-Knowledge-Pool-RAG).
 
 - **Main Pipeline**  
-  The `main.py` file orchestrates the pipeline for calling LLM functions and integrating the responses into your design workflow. You can expand this file as needed to suit your design assistant copilot’s business logic.
+  The `main.py` file orchestrates the pipeline for calling LLM functions and integrating the responses into your design workflow. You can expand this file as needed to suit your design assistant copilot's business logic.
 
 - **Utility Functions**  
-  The `utils/rag_utils.py` file contains functions related to Retrieval-Augmented Generation (RAG), useful for incorporating external knowledge into your LLM queries. You can add additional utility functions to extend the project’s capabilities.
+  The `utils/rag_utils.py` file contains functions related to Retrieval-Augmented Generation (RAG), useful for incorporating external knowledge into your LLM queries. You can add additional utility functions to extend the project's capabilities.
+
+- **Graph Query Engine**
+  The `graph_query.py` file contains the GraphQueryEngine class that handles Neo4j integration and natural language query processing. You can extend this to support more complex graph analysis features.
 
 ### Customizing Your Assistant Copilot
 

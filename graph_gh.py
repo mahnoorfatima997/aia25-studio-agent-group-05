@@ -10,7 +10,6 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QPen, QBrush, QFont, QPainter, QColor
 from PyQt5.QtCore import Qt, QPointF
 from matplotlib import colormaps
-from ui_pyqt import *
 
 
 class NodeItem(QGraphicsEllipseItem):
