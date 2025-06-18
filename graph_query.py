@@ -62,6 +62,13 @@ class GraphQueryEngine:
                     for row in reader:
                         # Create node with all properties
                         properties = {k: v for k, v in row.items() if v != ''}
+                        # Convert x and y to float if present
+                        for coord in ['x', 'y']:
+                            if coord in properties:
+                                try:
+                                    properties[coord] = float(properties[coord])
+                                except Exception:
+                                    pass
                         node_id = properties.get('id', properties.get('Id', properties.get('ID')))
                         if node_id:
                             # Remove id from properties for Neo4j
@@ -72,7 +79,7 @@ class GraphQueryEngine:
                             if 'ID' in properties:
                                 del properties['ID']
                             # Create node with all properties
-                            props_str = ', '.join([f'{k}: "{v}"' for k, v in properties.items()])
+                            props_str = ', '.join([f'{k}: {json.dumps(v)}' for k, v in properties.items()])
                             query = f'CREATE (n:Node {{id: "{node_id}", {props_str}}})'
                             session.run(query)
                 

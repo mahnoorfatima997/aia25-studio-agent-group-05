@@ -1319,12 +1319,24 @@ def export_graph_to_csv(graph_json, out_dir=None):
                 del row["pos"]
             writer.writerow(row)
 
-    # Write edges
+    # Build a lookup for node positions
+    node_pos = {n["id"]: (float(n.get("x", 0)), float(n.get("y", 0))) for n in graph_json["nodes"] if "x" in n and "y" in n}
+
+    # Write edges with distance
     with open(edges_path, "w", newline='') as f_edges:
-        writer = csv.DictWriter(f_edges, fieldnames=["source", "target"])
+        writer = csv.DictWriter(f_edges, fieldnames=["source", "target", "distance"])
         writer.writeheader()
         for edge in graph_json["links"]:
-            writer.writerow({"source": edge["source"], "target": edge["target"]})
+            source = edge["source"]
+            target = edge["target"]
+            # Calculate Euclidean distance if possible
+            dist = ""
+            if source in node_pos and target in node_pos:
+                x1, y1 = node_pos[source]
+                x2, y2 = node_pos[target]
+                dist = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+                dist = round(dist, 3)
+            writer.writerow({"source": source, "target": target, "distance": dist})
 
     # Write full JSON for Grasshopper
     with open(json_path, "w") as f_json:
