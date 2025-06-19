@@ -5,9 +5,10 @@ import random
 from PyQt5.QtWidgets import (
     QApplication, QGraphicsView, QGraphicsScene, QGraphicsEllipseItem,
     QGraphicsLineItem, QGraphicsTextItem, QMainWindow, QVBoxLayout, QHBoxLayout,
-    QWidget, QPushButton, QComboBox, QLabel, QMessageBox, QGraphicsItem
+    QWidget, QPushButton, QComboBox, QLabel, QMessageBox, QGraphicsItem,
+    QGraphicsRectItem
 )
-from PyQt5.QtGui import QPen, QBrush, QFont, QPainter, QColor
+from PyQt5.QtGui import QPen, QBrush, QFont, QPainter, QColor, QPainterPath
 from PyQt5.QtCore import Qt, QPointF
 from matplotlib import colormaps
 
@@ -17,8 +18,17 @@ class NodeItem(QGraphicsEllipseItem):
         self.radius = weight
         super().__init__(-self.radius, -self.radius, self.radius * 2, self.radius * 2)
         self.setPos(x, y)
-        self.setBrush(QBrush(color))
-        self.setPen(QPen(Qt.transparent))
+        
+        # Enhanced color scheme with better contrast
+        if anchor:
+            # Anchor nodes get a special style
+            self.setBrush(QBrush(color))
+            self.setPen(QPen(QColor("#2C3E50"), 3))  # Dark blue border
+        else:
+            # Regular nodes with gradient-like appearance
+            self.setBrush(QBrush(color))
+            self.setPen(QPen(QColor("#34495E"), 2))  # Darker border for better definition
+        
         self.setZValue(1)
         self.setFlags(QGraphicsEllipseItem.ItemSendsGeometryChanges)
         self.setAcceptHoverEvents(True)
@@ -30,14 +40,23 @@ class NodeItem(QGraphicsEllipseItem):
         self.anchor = anchor
         self.resizing = False
 
+        # Enhanced text styling for better legibility
         self.label = QGraphicsTextItem(label)
-        self.label.setFont(QFont("Arial", 10))
-        self.label.setDefaultTextColor(Qt.white)
+        if anchor:
+            # Cardinal directions get special styling
+            self.label.setFont(QFont("Arial Black", 14, QFont.Bold))
+            self.label.setDefaultTextColor(QColor("#2C3E50"))  # Dark blue text
+        else:
+            # Regular nodes get improved text styling
+            font_size = max(8, min(12, weight // 3))  # Scale font with node size
+            self.label.setFont(QFont("Arial", int(font_size), QFont.Bold))
+            self.label.setDefaultTextColor(QColor("#FFFFFF"))  # White text for contrast
+        
         self.label.setParentItem(self)
         self.center_label()
 
     def center_label(self):
-        self.label.setPos(-self.label.boundingRect().width() / 2, -10)
+        self.label.setPos(-self.label.boundingRect().width() / 2, -self.label.boundingRect().height() / 2)
 
     def hoverMoveEvent(self, event):
         dist = event.pos().manhattanLength()
@@ -99,13 +118,32 @@ class NodeItem(QGraphicsEllipseItem):
         return super().itemChange(change, value)
 
 
+class CardinalDirectionItem(QGraphicsTextItem):
+    """Special item for cardinal directions as letters instead of circles"""
+    def __init__(self, direction, x, y):
+        super().__init__(direction)
+        self.setPos(x, y)
+        
+        # Enhanced styling for cardinal directions
+        self.setFont(QFont("Arial Black", 18, QFont.Bold))
+        self.setDefaultTextColor(QColor("#2C3E50"))  # Dark blue
+        
+        # Add a subtle background for better visibility
+        self.setZValue(2)  # Higher than regular nodes
+        
+        # Center the text
+        self.setPos(x - self.boundingRect().width() / 2, y - self.boundingRect().height() / 2)
+
+
 class EdgeItem(QGraphicsLineItem):
     def __init__(self, node1, node2):
         super().__init__()
         self.node1 = node1
         self.node2 = node2
-        self.default_pen = QPen(Qt.black, 2)
-        self.highlight_pen = QPen(Qt.red, 2)
+        
+        # Enhanced edge styling
+        self.default_pen = QPen(QColor("#7F8C8D"), 2)  # Gray with better contrast
+        self.highlight_pen = QPen(QColor("#E74C3C"), 3)  # Red highlight
         self.setPen(self.default_pen)
         self.setAcceptHoverEvents(True)
         self.update_position()
@@ -131,13 +169,29 @@ class GraphEditor(QGraphicsView):
         self.setRenderHint(QPainter.Antialiasing)
         self.setScene(QGraphicsScene(self))
         self.setSceneRect(0, 0, 1000, 800)
+        
+        # Set background color for better aesthetics
+        self.setBackgroundBrush(QBrush(QColor("#F8F9FA")))  # Light gray background
 
         self.nodes = {}
         self.edges = []
         self.edge_pairs = set()
         self.selected_node = None
 
-        self.summer = colormaps.get_cmap("summer")
+        # Enhanced color palette
+        self.color_palette = [
+            QColor("#3498DB"),  # Blue
+            QColor("#E74C3C"),  # Red
+            QColor("#2ECC71"),  # Green
+            QColor("#F39C12"),  # Orange
+            QColor("#9B59B6"),  # Purple
+            QColor("#1ABC9C"),  # Turquoise
+            QColor("#E67E22"),  # Dark Orange
+            QColor("#34495E"),  # Dark Blue
+            QColor("#16A085"),  # Dark Green
+            QColor("#8E44AD"),  # Dark Purple
+        ]
+        
         # Define size conversion constants
         self.WEIGHT_TO_RADIUS = 5  # Multiply weight by this to get radius
         self.RADIUS_TO_WEIGHT = 1/self.WEIGHT_TO_RADIUS  # Divide radius by this to get weight
@@ -154,7 +208,7 @@ class GraphEditor(QGraphicsView):
         self.add_cardinal_directions()
 
     def add_cardinal_directions(self):
-        # Add cardinal direction nodes at the edges of the grid
+        # Add cardinal direction letters at the edges of the grid
         directions = {
             "N": ((self.X_MIN + self.X_MAX)/2, self.Y_MAX),  # North at top
             "E": (self.X_MIN, (self.Y_MIN + self.Y_MAX)/2),  # East at right
@@ -165,10 +219,11 @@ class GraphEditor(QGraphicsView):
         for direction, (x, y) in directions.items():
             # Transform coordinates to scene coordinates
             scene_x, scene_y = self.transform_to_scene_coords(x, y)
-            item = NodeItem(direction, scene_x, scene_y, True, direction, QColor("black"), 30)
-            item.label.setDefaultTextColor(Qt.black)
-            self.scene().addItem(item)
-            self.nodes[direction] = item
+            
+            # Create cardinal direction as text instead of circle
+            cardinal_item = CardinalDirectionItem(direction, scene_x, scene_y)
+            self.scene().addItem(cardinal_item)
+            self.nodes[direction] = cardinal_item
 
     def transform_to_scene_coords(self, x, y):
         """Transform grid coordinates to scene coordinates"""
@@ -213,16 +268,18 @@ class GraphEditor(QGraphicsView):
             # Scale weight to a reasonable node size (between 30 and 100)
             node_size = min(max(weight * self.WEIGHT_TO_RADIUS, 30), 100)
 
+            # Enhanced color selection
             if anchor:
-                color = QColor.fromHsv(300 + random.randint(-20, 20), 200, 255)
+                color = QColor("#E74C3C")  # Red for anchors
             else:
-                rgba = self.summer(i / max(1, len(data["nodes"]) - 1))
-                color = QColor.fromRgbF(*rgba[:3])
+                # Use enhanced color palette
+                color = self.color_palette[i % len(self.color_palette)]
 
-            item = NodeItem(nid, scene_x, scene_y, anchor, nid, color, node_size)
-            item.label.setDefaultTextColor(Qt.black)
-            self.scene().addItem(item)
-            self.nodes[nid] = item
+            # Skip cardinal directions as they're handled separately
+            if nid not in ["N", "S", "E", "W"]:
+                item = NodeItem(nid, scene_x, scene_y, anchor, nid, color, node_size)
+                self.scene().addItem(item)
+                self.nodes[nid] = item
 
         for link in data["links"]:
             self.add_edge(link["source"], link["target"])
@@ -277,7 +334,7 @@ class GraphEditor(QGraphicsView):
             node.setBrush(QBrush(QColor(200, 80, 200)))
         else:
             index = list(self.nodes.keys()).index(node_id)
-            rgba = self.summer(index / max(1, len(self.nodes) - 1))
+            rgba = self.color_palette[index % len(self.color_palette)]
             node.setBrush(QBrush(QColor.fromRgbF(*rgba[:3])))
 
     def save_graph(self):

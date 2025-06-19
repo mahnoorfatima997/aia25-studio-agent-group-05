@@ -101,11 +101,11 @@ class FlaskClientChatUI(QMainWindow):
         title_layout.setContentsMargins(20, 15, 20, 15)
 
         # Title with icon
-        title_label = QLabel("🧠 Courtyard Design Copilot")
+        title_label = QLabel("Courtyard Design Copilot")
         title_label.setStyleSheet("""
             QLabel {
                 color: white;
-                font-size: 24px;
+                font-size: 30px;
                 font-weight: bold;
             }
         """)
@@ -135,7 +135,6 @@ class FlaskClientChatUI(QMainWindow):
         self.tree_data = {}
 
         self.phase_questions = {
-            "concept": "What is your main design concept or idea?",
             "functions": "What functions or spaces does your building include?",
             "attributes": "What are the key attributes or requirements you would like to add?",
             "graph": "A graph will be shown. You can interact with the graph to create a different layout.",
@@ -147,34 +146,30 @@ class FlaskClientChatUI(QMainWindow):
         
         # Initialize button states
         self.update_phase_buttons()
+        # Restore automatic phase question display
         self.show_phase_question()
         
         # Check server health on startup
         self.check_server_health()
 
+        # Show LLM-powered greeting on first open
+        greeting = self.llm_greeting()
+        self.chat_display.append(self.create_assistant_message(greeting))
+
+    def create_assistant_message(self, message, message_type="info"):
+        """Helper function to create plain assistant message styling: black text on white background, left-aligned, larger font."""
+        return f"""
+        <div style='margin: 10px 0; text-align: left;'>
+            <div style='background: white; color: black; padding: 10px 15px; border-radius: 8px; font-size: 24px; line-height: 1.6; display: inline-block; max-width: 70%;'>
+                {message}
+            </div>
+        </div>
+        """
+
     def show_phase_question(self):
         question = self.phase_questions.get(self.current_phase)
         if question:
-            assistant_html = f"""
-            <div style="margin: 10px 0;">
-                <div style="
-                    background-color: #F5F5F5;
-                    color: #212121;
-                    padding: 12px 20px;
-                    border-radius: 15px;
-                    border-top-left-radius: 5px;
-                    margin-right: 20%;
-                    margin-left: 0;
-                    display: inline-block;
-                    max-width: 70%;
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-                    font-size: 22px;
-                    line-height: 1.6;
-                ">
-                    {question}
-                </div>
-            </div>
-            """
+            assistant_html = self.create_assistant_message(question)
             self.chat_display.append(assistant_html)
 
     def send_message(self):
@@ -185,23 +180,10 @@ class FlaskClientChatUI(QMainWindow):
         # Clear input field
         self.input_field.clear()
 
-        # Add user message to chat with styling
+        # Add user message to chat with enhanced styling
         user_html = f"""
-        <div style="margin: 10px 0;">
-            <div style="
-                background-color: #E3F2FD;
-                color: #1565C0;
-                padding: 12px 20px;
-                border-radius: 15px;
-                border-top-right-radius: 5px;
-                margin-left: 20%;
-                margin-right: 0;
-                display: inline-block;
-                max-width: 70%;
-                box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-                font-size: 22px;
-                line-height: 1.6;
-            ">
+        <div style='margin: 10px 0; text-align: right;'>
+            <div style='background: white; color: black; padding: 10px 15px; border-radius: 8px; font-size: 24px; line-height: 1.6; display: inline-block; max-width: 70%;'>
                 {message}
             </div>
         </div>
@@ -250,24 +232,10 @@ class FlaskClientChatUI(QMainWindow):
                 
                 if geometry_data_response.status_code == 200:
                     func_data = geometry_data_response.json()
-                    self.chat_display.append(f"""
-                    <div style="margin: 10px 0;">
-                        <div style="
-                            background-color: #E8F5E9;
-                            color: #2E7D32;
-                            padding: 12px 20px;
-                            border-radius: 15px;
-                            margin: 0 20%;
-                            display: inline-block;
-                            max-width: 60%;
-                            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-                            font-size: 22px;
-                            font-style: italic;
-                        ">
-                            Geometry data sent successfully to server. Response: {func_data}
-                        </div>
-                    </div>
-                    """)
+                    self.chat_display.append(self.create_assistant_message(
+                        f"Geometry data sent successfully to server. Response: {func_data}", 
+                        "success"
+                    ))
                 else:
                     raise Exception(f"Server returned status code {geometry_data_response.status_code}")
                     
@@ -276,26 +244,7 @@ class FlaskClientChatUI(QMainWindow):
                 self.attributes = assistant_message
 
             # Add assistant message to chat with styling
-            assistant_html = f"""
-            <div style="margin: 10px 0;">
-                <div style="
-                    background-color: #F5F5F5;
-                    color: #212121;
-                    padding: 12px 20px;
-                    border-radius: 15px;
-                    border-top-left-radius: 5px;
-                    margin-right: 20%;
-                    margin-left: 0;
-                    display: inline-block;
-                    max-width: 70%;
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-                    font-size: 22px;
-                    line-height: 1.6;
-                ">
-                    {assistant_message}
-                </div>
-            </div>
-            """
+            assistant_html = self.create_assistant_message(assistant_message)
             self.chat_display.append(assistant_html)
 
             # Add assistant message to current phase
@@ -306,23 +255,7 @@ class FlaskClientChatUI(QMainWindow):
                 self.continue_button.setVisible(True)
 
         except Exception as e:
-            error_html = f"""
-            <div style="margin: 10px 0;">
-                <div style="
-                    background-color: #FFEBEE;
-                    color: #C62828;
-                    padding: 12px 20px;
-                    border-radius: 15px;
-                    margin: 0 20%;
-                    display: inline-block;
-                    max-width: 60%;
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-                    font-size: 22px;
-                ">
-                    Error: {str(e)}
-                </div>
-            </div>
-            """
+            error_html = self.create_assistant_message(f"Error: {str(e)}", "error")
             self.chat_display.append(error_html)
 
         # Scroll to bottom
@@ -336,8 +269,10 @@ class FlaskClientChatUI(QMainWindow):
         should_show_graph = self.current_phase == "attributes"
         if current_index < len(phases) - 1:
             self.current_phase = phases[current_index + 1]
-            self.chat_display.append(f"<b>Phase changed to:</b> {self.current_phase}")
+            # Remove phase change message but keep phase question
+            # self.chat_display.append(f"<b>Phase changed to:</b> {self.current_phase}")
             self.continue_button.setVisible(False)
+            # Restore automatic phase question display
             self.show_phase_question()
             if self.current_phase == 'graph':
                 self.graph()
@@ -378,27 +313,10 @@ class FlaskClientChatUI(QMainWindow):
             self.current_phase = phases[current_index - 1]
             # Show/hide export and continue buttons appropriately
             self.update_phase_buttons()
-            # Show phase change message
-            phase_change_html = f"""
-            <div style="margin: 10px 0;">
-                <div style="
-                    background-color: #FFF3E0;
-                    color: #E65100;
-                    padding: 12px 20px;
-                    border-radius: 15px;
-                    margin: 0 20%;
-                    display: inline-block;
-                    max-width: 60%;
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-                    font-size: 22px;
-                    font-weight: bold;
-                ">
-                    Returned to phase: {self.current_phase}
-                </div>
-            </div>
-            """
-            self.chat_display.append(phase_change_html)
-            # Show the phase question
+            # Remove phase change message but keep phase question
+            # phase_change_html = self.create_assistant_message(f"Returned to phase: {self.current_phase}", "info")
+            # self.chat_display.append(phase_change_html)
+            # Restore automatic phase question display
             self.show_phase_question()
             # If we're going back from graph phase, close the graph window
             if phases[current_index] == 'graph' and hasattr(self, 'graph_window'):
@@ -542,94 +460,35 @@ class FlaskClientChatUI(QMainWindow):
                 if tree_data_response.status_code == 200:
                     response_data = tree_data_response.json()
                     print("Server response:", response_data)
-                    self.chat_display.append(f"""
-                    <div style="margin: 10px 0;">
-                        <div style="
-                            background-color: #E8F5E9;
-                            color: #2E7D32;
-                            padding: 12px 20px;
-                            border-radius: 15px;
-                            margin: 0 20%;
-                            display: inline-block;
-                            max-width: 60%;
-                            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-                            font-size: 22px;
-                            font-style: italic;
-                        ">
-                            Tree data sent successfully to server. Response: {response_data}
-                        </div>
-                    </div>
-                    """)
+                    self.chat_display.append(self.create_assistant_message(
+                        f"Tree data sent successfully to server. Response: {response_data}", 
+                        "success"
+                    ))
                 else:
                     raise Exception(f"Server returned status code {tree_data_response.status_code}")
                     
             except requests.exceptions.ConnectionError as e:
                 # Handle connection errors gracefully
                 print(f"Connection error sending tree data: {e}")
-                self.chat_display.append(f"""
-                <div style="margin: 10px 0;">
-                    <div style="
-                        background-color: #FFF3E0;
-                        color: #E65100;
-                        padding: 12px 20px;
-                        border-radius: 15px;
-                        margin: 0 20%;
-                        display: inline-block;
-                        max-width: 60%;
-                        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-                        font-size: 22px;
-                        font-style: italic;
-                    ">
-                        ⚠️ Server connection failed. Tree data saved locally but not sent to Grasshopper.
-                        <br>Error: {str(e)}
-                        <br>You can continue with the design process.
-                    </div>
-                </div>
-                """)
+                self.chat_display.append(self.create_assistant_message(
+                    f"⚠️ Server connection failed. Tree data saved locally but not sent to Grasshopper.\nError: {str(e)}\nYou can continue with the design process.",
+                    "warning"
+                ))
                 return  # Continue without failing the entire process
                 
             except requests.exceptions.Timeout as e:
                 print(f"Timeout error sending tree data: {e}")
-                self.chat_display.append(f"""
-                <div style="margin: 10px 0;">
-                    <div style="
-                        background-color: #FFF3E0;
-                        color: #E65100;
-                        padding: 12px 20px;
-                        border-radius: 15px;
-                        margin: 0 20%;
-                        display: inline-block;
-                        max-width: 60%;
-                        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-                        font-size: 22px;
-                        font-style: italic;
-                    ">
-                        ⚠️ Server timeout. Tree data saved locally but not sent to Grasshopper.
-                        <br>You can continue with the design process.
-                    </div>
-                </div>
-                """)
+                self.chat_display.append(self.create_assistant_message(
+                    f"⚠️ Server timeout. Tree data saved locally but not sent to Grasshopper.\nYou can continue with the design process.",
+                    "warning"
+                ))
                 return  # Continue without failing the entire process
 
         except Exception as e:
-            error_html = f"""
-            <div style="margin: 10px 0;">
-                <div style="
-                    background-color: #FFEBEE;
-                    color: #C62828;
-                    padding: 12px 20px;
-                    border-radius: 15px;
-                    margin: 0 20%;
-                    display: inline-block;
-                    max-width: 60%;
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-                    font-size: 22px;
-                ">
-                    Error processing tree data: {str(e)}
-                    <br>You can continue with the design process.
-                </div>
-            </div>
-            """
+            error_html = self.create_assistant_message(
+                f"Error processing tree data: {str(e)}\nYou can continue with the design process.",
+                "error"
+            )
             self.chat_display.append(error_html)
             print(f"Error in tree_data: {e}")
 
@@ -670,73 +529,28 @@ class FlaskClientChatUI(QMainWindow):
             )
             
             if graph_response.status_code == 200:
-                self.chat_display.append(f"""
-                <div style="margin: 10px 0;">
-                    <div style="
-                        background-color: #E8F5E9;
-                        color: #2E7D32;
-                        padding: 12px 20px;
-                        border-radius: 15px;
-                        margin: 0 20%;
-                        display: inline-block;
-                        max-width: 60%;
-                        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-                        font-size: 22px;
-                        font-style: italic;
-                    ">
-                        Initial graph layout sent to Grasshopper. You can now modify the layout and use the Export button to save your changes.
-                    </div>
-                </div>
-                """)
+                self.chat_display.append(self.create_assistant_message(
+                    "Initial graph layout sent to Grasshopper. You can now modify the layout and use the Export button to save your changes.",
+                    "success"
+                ))
             else:
                 raise Exception(f"Server returned status code {graph_response.status_code}")
             
         except requests.exceptions.ConnectionError as e:
             # Handle connection errors gracefully
             print(f"Connection error sending graph data: {e}")
-            self.chat_display.append(f"""
-            <div style="margin: 10px 0;">
-                <div style="
-                    background-color: #FFF3E0;
-                    color: #E65100;
-                    padding: 12px 20px;
-                    border-radius: 15px;
-                    margin: 0 20%;
-                    display: inline-block;
-                    max-width: 60%;
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-                    font-size: 22px;
-                    font-style: italic;
-                ">
-                    ⚠️ Server connection failed. Graph visualization opened but data not sent to Grasshopper.
-                    <br>Error: {str(e)}
-                    <br>You can still modify the graph and export to CSV.
-                </div>
-            </div>
-            """)
+            self.chat_display.append(self.create_assistant_message(
+                f"⚠️ Server connection failed. Graph visualization opened but data not sent to Grasshopper.\nError: {str(e)}\nYou can still modify the graph and export to CSV.",
+                "warning"
+            ))
             return  # Continue without failing the entire process
             
         except requests.exceptions.Timeout as e:
             print(f"Timeout error sending graph data: {e}")
-            self.chat_display.append(f"""
-            <div style="margin: 10px 0;">
-                <div style="
-                    background-color: #FFF3E0;
-                    color: #E65100;
-                    padding: 12px 20px;
-                    border-radius: 15px;
-                    margin: 0 20%;
-                    display: inline-block;
-                    max-width: 60%;
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-                    font-size: 22px;
-                    font-style: italic;
-                ">
-                    ⚠️ Server timeout. Graph visualization opened but data not sent to Grasshopper.
-                    <br>You can still modify the graph and export to CSV.
-                </div>
-            </div>
-            """)
+            self.chat_display.append(self.create_assistant_message(
+                "⚠️ Server timeout. Graph visualization opened but data not sent to Grasshopper.\nYou can still modify the graph and export to CSV.",
+                "warning"
+            ))
             return  # Continue without failing the entire process
 
     def get_graph_json(self):
@@ -784,45 +598,16 @@ class FlaskClientChatUI(QMainWindow):
             # Export to CSV using the standalone function
             export_graph_to_csv(current_graph_data)
             # Show success message
-            success_html = f"""
-            <div style="margin: 10px 0;">
-                <div style="
-                    background-color: #E8F5E9;
-                    color: #2E7D32;
-                    padding: 12px 20px;
-                    border-radius: 15px;
-                    margin: 0 20%;
-                    display: inline-block;
-                    max-width: 60%;
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-                    font-size: 22px;
-                    font-style: italic;
-                ">
-                    Current graph layout exported successfully.<br>
-                    - Nodes and edges CSVs saved in Downloads/courtyard_graph<br>
-                    - Graph state updated for Grasshopper
-                </div>
-            </div>
-            """
+            success_html = self.create_assistant_message(
+                "Current graph layout exported successfully.\n- Nodes and edges CSVs saved in Downloads/courtyard_graph\n- Graph state updated for Grasshopper",
+                "success"
+            )
             self.chat_display.append(success_html)
         except Exception as e:
-            error_html = f"""
-            <div style="margin: 10px 0;">
-                <div style="
-                    background-color: #FFEBEE;
-                    color: #C62828;
-                    padding: 12px 20px;
-                    border-radius: 15px;
-                    margin: 0 20%;
-                    display: inline-block;
-                    max-width: 60%;
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-                    font-size: 22px;
-                ">
-                    Error exporting graph to CSV: {str(e)}
-                </div>
-            </div>
-            """
+            error_html = self.create_assistant_message(
+                f"Error exporting graph to CSV: {str(e)}",
+                "error"
+            )
             self.chat_display.append(error_html)
             print(f"Error exporting graph to CSV: {e}")
 
@@ -1243,29 +1028,29 @@ class FlaskClientChatUI(QMainWindow):
                 print(f"⚠️ Server responded with status: {response.status_code}")
         except requests.exceptions.ConnectionError:
             print("❌ Server is not running or not accessible")
-            self.chat_display.append("""
-            <div style="margin: 10px 0;">
-                <div style="
-                    background-color: #FFF3E0;
-                    color: #E65100;
-                    padding: 12px 20px;
-                    border-radius: 15px;
-                    margin: 0 20%;
-                    display: inline-block;
-                    max-width: 60%;
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-                    font-size: 22px;
-                    font-style: italic;
-                ">
-                    ⚠️ Server connection check failed. Some features may not work properly.
-                    <br>Make sure gh_server.py is running.
-                </div>
-            </div>
-            """)
+            self.chat_display.append(self.create_assistant_message(
+                "⚠️ Server connection check failed. Some features may not work properly.\nMake sure gh_server.py is running.",
+                "warning"
+            ))
         except requests.exceptions.Timeout:
             print("⚠️ Server connection timeout")
         except Exception as e:
             print(f"⚠️ Server health check error: {e}")
+
+    def llm_greeting(self):
+        """Call the LLM to generate a friendly greeting and ask what the user wants to see in the courtyard design."""
+        try:
+            from llm_calls import client, completion_model
+            response = client.chat.completions.create(
+                model=completion_model,
+                messages=[
+                    {"role": "system", "content": "You are a friendly, helpful courtyard design assistant. Greet the user, introduce yourself as their design copilot, and ask what they would like to see or achieve in their courtyard design. Keep it short and welcoming."}
+                ]
+            )
+            greeting = response.choices[0].message.content
+        except Exception as e:
+            greeting = "Hello! I'm your courtyard design copilot. What would you like to see in your courtyard design?"
+        return greeting
 
 def extract_json(body):
     # if body is json then return
