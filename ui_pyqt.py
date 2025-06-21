@@ -227,7 +227,7 @@ class FlaskClientChatUI(QMainWindow):
                     "http://127.0.0.1:5000/geometry_data",
                     json={"geometry_data": self.design_data},
                     headers=headers,
-                    timeout=10  # Add timeout
+                    timeout=10  
                 )
                 
                 if geometry_data_response.status_code == 200:
@@ -396,19 +396,134 @@ class FlaskClientChatUI(QMainWindow):
             print(f"Error setting functions: {e}")
             return
 
+    def send_external_function_placement(self, placement_data):
+        """
+        Send external function placement data to the server.
+        This data will be retrieved by Grasshopper via GET request.
+        """
+        try:
+            headers = {
+                'Content-Type': 'application/json'
+            }
+            
+            response = requests.post(
+                "http://127.0.0.1:5000/external_function_placement",
+                json={"external_function_placement": placement_data},
+                headers=headers,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                print("External function placement data sent successfully to server")
+                return True
+            else:
+                print(f"Warning: Failed to send external function placement data: {response.status_code}")
+                return False
+                
+        except requests.exceptions.ConnectionError as e:
+            print(f"Connection error sending external function placement data: {e}")
+            return False
+        except requests.exceptions.Timeout as e:
+            print(f"Timeout error sending external function placement data: {e}")
+            return False
+        except Exception as e:
+            print(f"Error sending external function placement data: {e}")
+            return False
 
     def geometry_data(self):
         """
-        Aggregate all relevant data from all phases, store in self.design_data, and persist to JSON DB.
+        Aggregate all relevant data from all phases, calculating and using bounded positions.
         """
         try:
+            # Standard data extraction
             spaces = extract_json(extract_spaces(self.concept, self.extracted_functions, self.attributes))
             links = extract_json(extract_links(self.concept, self.extracted_functions))
             positions = extract_json(extract_positions(self.concept, self.extracted_functions))
             cardinal_directions = extract_json(extract_cardinal_directions(self.concept, self.extracted_functions, self.attributes))
             weights = extract_json(extract_weights(self.concept, self.extracted_functions, self.attributes))
             anchors = extract_json(extract_anchors(self.concept, self.extracted_functions, self.attributes))
-            pos = extract_json(extract_pos(self.concept, self.extracted_functions))
+            
+            # --- New Bounded Position Generation ---
+            
+            # 1. Fetch corner data from Grasshopper via the server
+            corners = []
+            calculated_placements = {}
+            final_pos = {}
+
+            try:
+                placement_response = requests.get("http://127.0.0.1:5000/external_function_placement", timeout=5)
+                if placement_response.status_code == 200:
+                    placement_data = placement_response.json()
+                    data_from_gh = placement_data.get("external_function_placement", {})
+                    corners = data_from_gh.get("coordinates", [])
+                    print(f"Received {len(corners)} coordinates from Grasshopper.")
+                else:
+                    print("⚠️ Could not fetch data from Grasshopper. Proceeding without bounded placement.")
+            except Exception as e:
+                print(f"⚠️ Error fetching GH data: {e}. Proceeding without bounded placement.")
+
+            # 2. If we have corners, calculate placements and call the new LLM function
+            if corners and len(corners) >= 4:
+                # --- New, more robust corner assignment logic ---
+
+                # a. Find the bounding box limits of the corners
+                min_x = min(p[0] for p in corners)
+                max_x = max(p[0] for p in corners)
+                min_y = min(p[1] for p in corners)
+                max_y = max(p[1] for p in corners)
+
+                # b. Find the actual corner point closest to each ideal corner
+                def find_closest_point(ideal_coord, point_list):
+                    ideal_x, ideal_y = ideal_coord
+                    return min(point_list, key=lambda p: ((p[0] - ideal_x)**2 + (p[1] - ideal_y)**2))
+
+                actual_corner_points = {
+                    'NW': find_closest_point((min_x, max_y), corners), 'NE': find_closest_point((max_x, max_y), corners),
+                    'SW': find_closest_point((min_x, min_y), corners), 'SE': find_closest_point((max_x, min_y), corners)
+                }
+
+                # c. Define a prioritized preference list for each cardinal direction to avoid conflicts
+                direction_to_corner_preference = {
+                    'N': ['NE', 'NW'], 'E': ['SE', 'NE'],
+                    'S': ['SW', 'SE'], 'W': ['NW', 'SW']
+                }
+
+                # d. Assign functions to available corners without collision
+                used_corners = set()
+                for name, direction in self.extracted_functions.items():
+                    direction_key = direction.upper()[0]
+                    if direction_key in direction_to_corner_preference:
+                        assigned_corner_key = None
+                        # Find the first available preferred corner
+                        for corner_key in direction_to_corner_preference[direction_key]:
+                            if corner_key not in used_corners:
+                                assigned_corner_key = corner_key
+                                break
+                        
+                        # If no preferred corner was available, pick any other unused corner
+                        if not assigned_corner_key:
+                            available_corners = set(actual_corner_points.keys()) - used_corners
+                            if available_corners:
+                                assigned_corner_key = available_corners.pop()
+
+                        if assigned_corner_key:
+                            point = actual_corner_points[assigned_corner_key]
+                            calculated_placements[name] = [point[0], point[1]]
+                            used_corners.add(assigned_corner_key) # Mark corner as used
+                        else:
+                            print(f"Warning: No available corner for function '{name}'. All are assigned.")
+                
+                print("Calculated fixed placements for external functions:", calculated_placements)
+                
+                # Call the new, more powerful extract_pos function
+                pos_response = extract_pos(self.concept, self.extracted_functions, corners, calculated_placements)
+                final_pos = extract_json(pos_response)
+
+            else:
+                # Fallback to the old method if no corners are available
+                print("Falling back to unbounded position generation.")
+                pos_response = extract_pos(self.concept, self.extracted_functions, [], {}) # Call with empty boundary info
+                final_pos = extract_json(pos_response)
 
             self.design_data = {
                 "spaces": spaces["spaces"],
@@ -418,7 +533,7 @@ class FlaskClientChatUI(QMainWindow):
                 "weights": weights["weights"],
                 "anchors": anchors["anchors"],
                 "external_functions": self.extracted_functions,
-                "pos": pos["pos"]
+                "pos": final_pos.get("pos", {}) # Ensure we get the nested 'pos' object
             }
             print("Design data aggregated:", self.design_data)
 
@@ -900,12 +1015,62 @@ class FlaskClientChatUI(QMainWindow):
         self.query_results.setMinimumHeight(400)
         query_layout.addWidget(self.query_results)
 
+        # Send to Grasshopper button (initially hidden)
+        self.send_query_to_gh_button = QPushButton("Send Query Results to Grasshopper")
+        self.send_query_to_gh_button.setStyleSheet("""
+            QPushButton {
+                background-color: #FF9800;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 10px 20px;
+                font-weight: bold;
+                font-size: 18px;
+            }
+            QPushButton:hover {
+                background-color: #F57C00;
+            }
+            QPushButton:pressed {
+                background-color: #E65100;
+            }
+        """)
+        self.send_query_to_gh_button.clicked.connect(self.send_query_results_to_grasshopper)
+        self.send_query_to_gh_button.setVisible(False)  # Initially hidden
+        query_layout.addWidget(self.send_query_to_gh_button)
+
+        # Clear Results button (initially hidden)
+        self.clear_results_button = QPushButton("Clear Results")
+        self.clear_results_button.setStyleSheet("""
+            QPushButton {
+                background-color: #757575;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 10px 20px;
+                font-weight: bold;
+                font-size: 18px;
+            }
+            QPushButton:hover {
+                background-color: #616161;
+            }
+            QPushButton:pressed {
+                background-color: #424242;
+            }
+        """)
+        self.clear_results_button.clicked.connect(self.clear_query_results_and_display)
+        self.clear_results_button.setVisible(False)  # Initially hidden
+        query_layout.addWidget(self.clear_results_button)
+
         # Add the query tab to the tab widget
         self.tab_widget.addTab(query_widget, "Graph Query")
 
     def load_graph_data(self):
         """Load CSV data into Neo4j and initialize the query engine"""
         try:
+            # Hide the send button when loading new data
+            self.send_query_to_gh_button.setVisible(False)
+            self.clear_results_button.setVisible(False)
+            
             # Call the server endpoint to load data
             response = requests.post("http://127.0.0.1:5000/graph_query/load_data")
             
@@ -928,6 +1093,7 @@ class FlaskClientChatUI(QMainWindow):
                     
                     self.query_results.append("✅ Graph data loaded successfully!")
                     self.query_results.append("You can now ask questions about your graph data.")
+                    self.query_results.append("💡 Tip: After running a query, you can send the results to Grasshopper using the 'Send Query Results to Grasshopper' button.")
                 else:
                     self.query_results.append(f"❌ {result.get('error', 'Unknown error')}")
             else:
@@ -1003,6 +1169,19 @@ class FlaskClientChatUI(QMainWindow):
                     if human_answer:
                         self.query_results.append(f"<b>Answer:</b>")
                         self.query_results.append(human_answer)
+                    
+                    # Show the "Send to Grasshopper" button after successful query
+                    self.send_query_to_gh_button.setVisible(True)
+                    self.clear_results_button.setVisible(True)
+                    
+                    # Store the query results for later use
+                    self.current_query_results = {
+                        "question": question,
+                        "cypher_query": cypher_query,
+                        "raw_data": raw_data,
+                        "human_answer": human_answer
+                    }
+                    
                 else:
                     self.query_results.append(f"❌ {result.get('error', 'Unknown error')}")
             else:
@@ -1051,6 +1230,70 @@ class FlaskClientChatUI(QMainWindow):
         except Exception as e:
             greeting = "Hello! I'm your courtyard design copilot. What would you like to see in your courtyard design?"
         return greeting
+
+    def send_query_results_to_grasshopper(self):
+        """Handler for the "Send Query Results to Grasshopper" button"""
+        try:
+            # Check if we have query results to send
+            if not hasattr(self, 'current_query_results') or not self.current_query_results:
+                self.query_results.append(self.create_assistant_message(
+                    "❌ No query results available to send. Please run a query first.",
+                    "error"
+                ))
+                return
+            
+            # Send the stored query results to the server endpoint
+            headers = {
+                'Content-Type': 'application/json'
+            }
+            
+            # Send to the query_results endpoint
+            send_response = requests.post(
+                "http://127.0.0.1:5000/query_results",
+                json={"query_results": self.current_query_results},
+                headers=headers,
+                timeout=10
+            )
+            
+            if send_response.status_code == 200:
+                self.query_results.append(self.create_assistant_message(
+                    "✅ Query results sent to Grasshopper successfully!\n"
+                    "The results are now available for your Grasshopper model to read.\n"
+                    f"Question: {self.current_query_results['question']}\n"
+                    f"Results contain: {len(self.current_query_results.get('raw_data', []))} data points",
+                    "success"
+                ))
+            else:
+                raise Exception(f"Server returned status code {send_response.status_code}")
+                
+        except requests.exceptions.ConnectionError as e:
+            self.query_results.append(self.create_assistant_message(
+                f"⚠️ Server connection failed. Query results not sent to Grasshopper.\nError: {str(e)}",
+                "warning"
+            ))
+        except requests.exceptions.Timeout as e:
+            self.query_results.append(self.create_assistant_message(
+                "⚠️ Server timeout. Query results not sent to Grasshopper.",
+                "warning"
+            ))
+        except Exception as e:
+            self.query_results.append(self.create_assistant_message(
+                f"❌ Error sending query results to Grasshopper: {str(e)}",
+                "error"
+            ))
+
+    def clear_query_results(self):
+        """Clear stored query results and hide the send button"""
+        if hasattr(self, 'current_query_results'):
+            delattr(self, 'current_query_results')
+        self.send_query_to_gh_button.setVisible(False)
+
+    def clear_query_results_and_display(self):
+        """Clear stored query results, hide buttons, and clear the display"""
+        self.clear_query_results()
+        self.clear_results_button.setVisible(False)
+        self.query_results.clear()
+        self.query_results.append("Query results cleared. You can ask a new question.")
 
 def extract_json(body):
     # if body is json then return

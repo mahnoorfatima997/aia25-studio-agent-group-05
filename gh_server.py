@@ -8,12 +8,14 @@ from ui_pyqt import FlaskClientChatUI
 from PyQt5.QtWidgets import QApplication
 from graph_query import GraphQueryEngine
 import os
+import datetime
 
 
 app = Flask(__name__)
 
 area = None
 external_functions = None
+external_function_placement = None  # New global variable for external function placement
 generated_spaces = None
 geometry_data = None
 design_data = None
@@ -22,6 +24,7 @@ graph_data = None
 width = None
 length = None
 query_engine = None  # Global variable for the graph query engine
+query_results = None  # Global variable to store the latest query results
 
 @app.route('/plot_area', methods=['GET', 'POST'])
 def get_plot_area():
@@ -47,6 +50,21 @@ def handle_external_functions():
             return jsonify({"error": "No functions available. Please call POST first."})
         else:
             return jsonify({"external_functions": external_functions})
+
+@app.route('/external_function_placement', methods=['GET', 'POST'])
+def handle_external_function_placement():
+    """Handle external function placement data for Grasshopper"""
+    global external_function_placement
+    if request.method == 'POST':
+        data = request.get_json()
+        external_function_placement = data.get('external_function_placement', {})
+        print("Received external function placement data:", external_function_placement)
+        return jsonify({"status": "External function placement data updated successfully."})
+    else:  # GET
+        if external_function_placement is None:
+            return jsonify({"error": "No external function placement data available. Please set placement data first."})
+        else:
+            return jsonify({"external_function_placement": external_function_placement})
 
 @app.route('/spaces', methods=['POST', 'GET'])
 def handle_generated_spaces():
@@ -171,7 +189,7 @@ def get_sample_questions():
 @app.route('/graph_query/ask', methods=['POST'])
 def ask_graph_question():
     """Ask a question about the graph data"""
-    global query_engine
+    global query_engine, query_results
     try:
         if not query_engine:
             return jsonify({
@@ -190,6 +208,15 @@ def ask_graph_question():
         
         # Get response from query engine
         human_answer, cypher_query, raw_data = query_engine.ask_question(question)
+        
+        # Store the query results globally for sending to Grasshopper
+        query_results = {
+            "question": question,
+            "cypher_query": cypher_query,
+            "raw_data": raw_data,
+            "human_answer": human_answer,
+            "timestamp": str(datetime.datetime.now())
+        }
         
         return jsonify({
             "success": True,
@@ -243,6 +270,23 @@ def get_query_status():
             "message": f"Error: {str(e)}"
         })
 
+
+@app.route('/query_results', methods=['POST'])
+def set_query_results():
+    """Set query results to be sent to Grasshopper"""
+    global query_results
+    print("Received query results JSON:", request.json)
+    query_results = request.json.get('query_results', request.json)
+    print("Stored query_results:", query_results)
+    return jsonify({"status": "ok", "query_results": query_results})
+
+@app.route('/query_results', methods=['GET'])
+def get_query_results():
+    """Get the latest query results for Grasshopper"""
+    global query_results
+    if query_results is None:
+        return jsonify({"error": "No query results available. Please run a query first."})
+    return jsonify({"query_results": query_results})
 
 def run_flask():
     app.run(debug=False, use_reloader=False)  # Run Flask server in a separate thread

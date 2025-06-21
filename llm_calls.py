@@ -227,15 +227,18 @@ def extract_links(concept, external_functions=None):
                 }
                 }
 
-                Important Rules:
+                CRITICAL RULES:
                 1. ONLY use the exact courtyard zone names: play, rest, pond, flower, tree
-                2. Map any social/gathering spaces to "play"
-                3. Map any quiet/contemplative spaces to "rest"
-                4. Map any water features to "pond"
-                5. Map any garden/planting areas to "flower"
-                6. Map any tree/shade areas to "tree"
-                7. Include at least one connection for each external function
-                8. Maintain existing courtyard zone relationships
+                2. For courtyard spaces mentioned in the concept, map them to standardized names:
+                   - "yoga center", "yoga", "meditation", "quiet space" → "rest"
+                   - "play zone", "play area", "playground", "social space" → "play"
+                   - "pond", "water feature", "fountain" → "pond"
+                   - "garden", "flower bed", "planting area" → "flower"
+                   - "tree", "shade area", "tree area" → "tree"
+                3. For external functions, use their exact names from the external_functions list
+                4. Include at least one connection for each external function
+                5. Maintain existing courtyard zone relationships
+                6. NEVER use concept-specific names like "yoga center" in links - always map to standardized names
 
                 Do not use any other names or variations for the courtyard zones.
                 """
@@ -666,13 +669,13 @@ def extract_anchors(concept, external_functions, attributes):
             "content": """
                 You are assisting in the spatial design of a courtyard.
 
-                The user has already provided a design concept, extracted spatial attributes, and a list of functional zones with inferred adjacency relationships earlier in this conversation. The courtyard is divided into discrete numbered cells.
+                The user has already provided a design concept, extracted spatial attributes, and a list of external functions. 
 
                 From this information, your task is to:
 
-                Make a list of the {external_functions} provided by the user and the existing spaces (i.e tree, pond, flower, rest, play) generated for the courtyard.
+                Make a list of ONLY the {external_functions} provided by the user. DO NOT include any courtyard zones (tree, pond, flower, rest, play) in the anchors.
 
-                IMPORTANT: You MUST select AT LEAST 4 spaces/functions to be anchors. These should be the most strategically important locations in the courtyard design.
+                IMPORTANT: You MUST select AT LEAST 2 external functions to be anchors. These should be the most strategically important external functions in the courtyard design.
                 Consider:
                 1. Entry points and main circulation paths
                 2. Key functional spaces that define the courtyard's character
@@ -680,13 +683,16 @@ def extract_anchors(concept, external_functions, attributes):
                 4. Spaces that serve as focal points or landmarks
                 5. Additional spaces that would benefit from being anchored for design stability
 
-                Provide your output in the form of true/false, with AT LEAST 4 spaces marked as "true".
+                Provide your output in the form of true/false, with AT LEAST 2 external functions marked as "true".
                 
                 **Example Output:**
-                {"anchors": {"tree": "true", "pond": "true", "kindergarden": "true", "yoga": "true", "play": "true", "rest": "false"}}
+                {"anchors": {"cafe": "true", "library": "true", "yoga": "false"}}
 
-                DO NOT use any other spaces apart from the external_functions and the courtyard zones.
-                You MUST select AT LEAST 4 anchors, but you can select more if it would improve the design stability.
+                CRITICAL RULES:
+                1. ONLY use external functions from the external_functions list
+                2. DO NOT include any courtyard zones (tree, pond, flower, rest, play)
+                3. You MUST select AT LEAST 2 anchors from external functions, but you can select more if it would improve the design stability
+                4. If there are fewer than 2 external functions, mark all of them as "true"
                 """,
             },
         ]
@@ -711,21 +717,21 @@ def extract_anchors(concept, external_functions, attributes):
                     "type": "json_schema",
                     "json_schema": {
                         "name": "anchors",
-                        "description": "Boolean values showing which spaces/functions are anchors. Must have at least 4 true values.",
+                        "description": "Boolean values showing which external functions are anchors. Must have at least 2 true values.",
                         "schema": {
                             "type": "object",
                             "properties": {
                                 "anchors": {
                                     "type": "object",
-                                    "description": "Mapping of space/function names to boolean anchor status",
+                                    "description": "Mapping of external function names to boolean anchor status",
                                     "additionalProperties": {
                                         "type": "string",
                                         "enum": ["true", "false"]
                                     },
                                     "custom_validator": {
                                         "validate_anchor_count": {
-                                            "description": "Must have at least 4 true values",
-                                            "validate": "function(obj) { return Object.values(obj).filter(v => v === 'true').length >= 4; }"
+                                            "description": "Must have at least 2 true values",
+                                            "validate": "function(obj) { return Object.values(obj).filter(v => v === 'true').length >= 2; }"
                                         }
                                     }
                                 }
@@ -740,46 +746,68 @@ def extract_anchors(concept, external_functions, attributes):
     print("Response from LLM:", response.choices[0].message.content)
     return response.choices[0].message.content
 
-def extract_pos(concept, external_functions):
+def extract_pos(concept, external_functions, corners, external_placements):
+    """
+    Generates positions for all spaces, placing internal spaces within the given
+    boundary corners and keeping external functions at their fixed corner positions.
+    """
+    
+    # Calculate min/max for the coordinate range from the corners
+    min_x = min(p[0] for p in corners)
+    max_x = max(p[0] for p in corners)
+    min_y = min(p[1] for p in corners)
+    max_y = max(p[1] for p in corners)
+
+    # Get the names of internal functions (those not in external_placements)
+    all_known_functions = list(external_functions.keys()) + ["play", "rest", "pond", "flower", "tree"]
+    internal_functions = [name for name in all_known_functions if name not in external_placements]
+
+
     chat_messages = [
         {
             "role": "system",
-            "content": """
-                You are assisting in the spatial design of a courtyard.
+            "content": f"""
+                You are assisting in the spatial design of a courtyard. Your task is to generate the 2D coordinates for all the spaces.
 
-                The user has already provided enough information for you to extract.
+                You are given a bounding box and the fixed positions of external functions at the corners of this box.
+                You must place all the INTERNAL functions within this bounding box.
 
-                Your task now is to make a list of the areas (pond, tree, flower, play, rest) and functions {external_functions} we are working with, and add to it a position on a 2D grid. You must consider all other information before deciding on the placement of each.
+                **Constraints:**
+                1.  **Bounding Box:** The courtyard is defined by these corners: {corners}. All internal spaces must be placed strictly within the coordinate range defined by these corners.
+                    - X coordinates must be between {min_x} and {max_x}.
+                    - Y coordinates must be between {min_y} and {max_y}.
+                2.  **Fixed External Functions:** The following external functions are already placed at the corners. You MUST include them in your output with their exact coordinates as provided: {external_placements}.
+                3.  **Internal Functions:** You MUST generate new coordinates for the following internal functions: {internal_functions}. Place them logically within the bounding box based on the user's concept.
+                4.  **Relationships:** Consider the design concept when placing internal functions. For example, if 'play' should be near the 'school', place it accordingly.
 
-                IMPORTANT: The grid coordinates must follow these ranges:
-                - x coordinates range from -34 to -4
-                - y coordinates range from 30 to 60
-                - Use the full range to distribute spaces effectively
-                - Consider the relationships between spaces when assigning coordinates
-                - Place related spaces closer together
-                - Use the grid space efficiently
+                **Output Format:**
+                - You must output a single JSON object.
+                - The JSON object must have one key, "pos".
+                - The value of "pos" must be an object containing all function names (both external and internal) as keys and their [x, y] coordinates as values.
+                - DO NOT give null values. DO NOT include any extra text or explanations.
 
-                DO NOT output any extra information or text, only the JSON with the data. Make sure you add the external_functions as well as the courtyard areas.
-
-                #EXAMPLE OUTPUT
-                {"pos": {"tree": [-20, 45], "yoga": [-15, 35], "open": [-25, 50]}}
-
-                Make sure you ALWAYS output positions. DO NOT include any extra data. ONLY output X and Y coordinates of functional zones and external functions.
-                DO NOT give null values. Always use numbers within the specified ranges.
+                # Example Output
+                {{
+                    "pos": {{
+                        "cafe": [-10, 60], # This is an external, fixed function
+                        "school": [-30, 40], # This is an external, fixed function
+                        "tree": [-20, 45], # This is a newly generated internal position
+                        "pond": [-15, 50]  # This is a newly generated internal position
+                    }}
+                }}
                 """,
             },
         ]
     chat_messages.append({
     "role": "user",
-    "content": """
-        Concept: {concept}
-        Extracted Functions: {external_functions}
-    """.format(
-        concept=concept,
-        external_functions=external_functions,
-    )
+    "content": f"""
+        Design Concept: {concept}
+        External Functions to include: {list(external_functions.keys())}
+        Fixed External Placements: {external_placements}
+        Internal Functions to place: {internal_functions}
+    """
     })
-    print("Extracting pos...")
+    print("Extracting pos with boundary constraints...")
     response = client.chat.completions.create(
         model=completion_model,
         messages=chat_messages,
@@ -793,15 +821,11 @@ def extract_pos(concept, external_functions):
                             "properties": {
                                 "pos": {
                                     "type": "object",
-                                    "description": "Mapping of zone/function names to [x, y] coordinates. x must be between -34 and -4, y must be between 30 and 60.",
+                                    "description": "Mapping of zone/function names to [x, y] coordinates.",
                                     "additionalProperties": {
                                         "type": "array",
-                                        "description": "Array of two numbers [x, y] where -34 <= x <= -4 and 30 <= y <= 60",
-                                        "items": {
-                                            "type": "number",
-                                            "minimum": -34,
-                                            "maximum": -4
-                                        },
+                                        "description": "Array of two numbers [x, y].",
+                                        "items": {"type": "number"},
                                         "minItems": 2,
                                         "maxItems": 2
                                     }
@@ -866,8 +890,8 @@ def assemble_courtyard_graph(spaces, external_functions, weights, anchors, posit
                 "nodes": [
                     {
                     "id": "node_name",
-                    "pos": {"x": number, "y": number, "z": 0},  // x must be between -34 and -4, y must be between 30 and 60
-                    "weight": number,  // must be a number between 1 and 10
+                    "pos": {"x": number, "y": number, "z": 0},
+                    "weight": number,
                     "anchor": true/false
                     },
                     ...
@@ -878,29 +902,16 @@ def assemble_courtyard_graph(spaces, external_functions, weights, anchors, posit
                 ]
                 }
 
-                Important Rules:
-                1. NEVER use null/None for x, y coordinates or weights
-                2. For any missing coordinates, use default values:
-                   - For courtyard spaces (play, rest, pond, flower, tree): use values from pos dictionary
-                   - For external functions: 
-                     * If a cardinal direction is specified, place the function at the appropriate edge:
-                       - N: y = 60, x = -19 (middle of x range)
-                       - E: x = -34, y = 45 (middle of y range)
-                       - S: y = 30, x = -19 (middle of x range)
-                       - W: x = -4, y = 45 (middle of y range)
-                     * If no direction is specified, assign coordinates within the valid ranges
-                3. For any missing weights:
-                   - For courtyard spaces: use values from weights dictionary
-                   - For external functions: assign a default weight of 5
-                   - For the "open" node: assign a default weight of 1
-                4. All coordinates MUST be within the specified ranges:
-                   - x coordinates must be between -34 and -4
-                   - y coordinates must be between 30 and 60
-                5. All weights must be numbers between 1 and 10
-                6. Include the "open" node if it exists in the pos dictionary, with its specified coordinates
-                7. If any coordinates from pos dictionary are outside the valid ranges, scale them proportionally to fit within the ranges
+                **CRITICAL RULES:**
+                1.  **Prioritize Provided Positions:** For EVERY node (both internal courtyard spaces and external functions), you MUST use the coordinates from the provided `{pos}` dictionary. This is the source of truth for all positions.
+                2.  **No Default Positions:** Do NOT use default cardinal positions (e.g., placing 'N' at the top edge). The `{pos}` data already contains the correct, calculated corner positions for external functions.
+                3.  **Handle Missing Data:**
+                    - If a node is missing from `{pos}`, use (0,0) as a fallback coordinate.
+                    - If a node is missing a weight, use a default weight of 5.
+                4.  **Data Integrity:** Ensure all nodes from `{spaces}` and `{external_functions}` are included in the final output.
+                5.  **Anchors:** Use the `{anchors}` dictionary to set the "anchor" boolean property correctly for external functions. Courtyard spaces are not anchors (`"anchor": false`).
 
-                Only use the provided data. Do not invent or assume any values except for the defaults specified above.
+                Only use the provided data. Do not invent or assume any values except for the specified fallbacks.
                 Output only the JSON object, nothing else.
                 """
         },

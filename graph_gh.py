@@ -6,68 +6,75 @@ from PyQt5.QtWidgets import (
     QApplication, QGraphicsView, QGraphicsScene, QGraphicsEllipseItem,
     QGraphicsLineItem, QGraphicsTextItem, QMainWindow, QVBoxLayout, QHBoxLayout,
     QWidget, QPushButton, QComboBox, QLabel, QMessageBox, QGraphicsItem,
-    QGraphicsRectItem
+    QGraphicsRectItem, QFileDialog
 )
 from PyQt5.QtGui import QPen, QBrush, QFont, QPainter, QColor, QPainterPath
 from PyQt5.QtCore import Qt, QPointF
 from matplotlib import colormaps
 
+# Graph Editor with improved text visibility and cardinal direction positioning
+# - Regular nodes now use black text (Arial Black font) for better visibility
+# - Cardinal directions are positioned further from nodes to avoid overlap
+# - Cardinal directions use larger, bolder text for better visibility
 
 class NodeItem(QGraphicsEllipseItem):
     def __init__(self, node_id, x, y, anchor=False, label="", color=QColor("gray"), weight=20):
-        self.radius = weight
-        super().__init__(-self.radius, -self.radius, self.radius * 2, self.radius * 2)
-        self.setPos(x, y)
+        # The radius is now derived from the weight
+        radius = weight * 5 # Using a constant factor for visualization
+        super().__init__(x - radius, y - radius, 2 * radius, 2 * radius)
         
-        # Enhanced color scheme with better contrast
-        if anchor:
-            # Anchor nodes get a special style
-            self.setBrush(QBrush(color))
-            self.setPen(QPen(QColor("#2C3E50"), 3))  # Dark blue border
-        else:
-            # Regular nodes with gradient-like appearance
-            self.setBrush(QBrush(color))
-            self.setPen(QPen(QColor("#34495E"), 2))  # Darker border for better definition
-        
-        self.setZValue(1)
-        self.setFlags(QGraphicsEllipseItem.ItemSendsGeometryChanges)
-        self.setAcceptHoverEvents(True)
-
-        if not anchor:
-            self.setFlag(QGraphicsEllipseItem.ItemIsMovable)
-
         self.node_id = node_id
         self.anchor = anchor
-        self.resizing = False
+        self.weight = weight # Store the weight directly
+        self.setBrush(QBrush(color))
+        self.setPen(QPen(Qt.black, 2))
+        self.setFlag(QGraphicsItem.ItemIsMovable)
+        self.setFlag(QGraphicsItem.ItemSendsGeometryChanges)
+        self.setAcceptHoverEvents(True)
 
-        # Enhanced text styling for better legibility
-        self.label = QGraphicsTextItem(label)
-        if anchor:
-            # Cardinal directions get special styling
-            self.label.setFont(QFont("Arial Black", 14, QFont.Bold))
-            self.label.setDefaultTextColor(QColor("#2C3E50"))  # Dark blue text
-        else:
-            # Regular nodes get improved text styling
-            font_size = max(8, min(12, weight // 3))  # Scale font with node size
-            self.label.setFont(QFont("Arial", int(font_size), QFont.Bold))
-            self.label.setDefaultTextColor(QColor("#FFFFFF"))  # White text for contrast
-        
-        self.label.setParentItem(self)
+        self.label = QGraphicsTextItem(label, self)
         self.center_label()
 
     def center_label(self):
-        self.label.setPos(-self.label.boundingRect().width() / 2, -self.label.boundingRect().height() / 2)
+        label_rect = self.label.boundingRect()
+        ellipse_rect = self.rect()
+        self.label.setPos(
+            ellipse_rect.x() + (ellipse_rect.width() - label_rect.width()) / 2,
+            ellipse_rect.y() + (ellipse_rect.height() - label_rect.height()) / 2
+        )
+
+    def wheelEvent(self, event):
+        """Handle mouse wheel scrolling to change node weight."""
+        if self.anchor:
+            return  # Anchors cannot be resized
+
+        # Adjust weight based on scroll direction
+        delta = event.delta()
+        if delta > 0:
+            self.weight += 1  # Increase weight
+        else:
+            self.weight -= 1  # Decrease weight
+        
+        # Ensure weight stays within a reasonable range (e.g., 1 to 20)
+        self.weight = max(1, min(self.weight, 20))
+        
+        # Update the visual radius based on the new weight
+        new_radius = self.weight * 5
+        self.setRect(self.x() + self.rect().width()/2 - new_radius, 
+                     self.y() + self.rect().height()/2 - new_radius,
+                     2 * new_radius, 2 * new_radius)
+        self.center_label()
 
     def hoverMoveEvent(self, event):
-        dist = event.pos().manhattanLength()
-        if abs(dist - self.radius) < 6:
-            self.setCursor(Qt.SizeAllCursor)
+        if self.anchor:
+            self.setToolTip(f"ID: {self.node_id} (Anchor)")
         else:
-            self.setCursor(Qt.ArrowCursor)
+            self.setToolTip(f"ID: {self.node_id}\nWeight: {self.weight}")
+        super().hoverMoveEvent(event)
 
     def mousePressEvent(self, event):
         dist = event.pos().manhattanLength()
-        if abs(dist - self.radius) < 6:
+        if abs(dist - self.rect().width() / 2) < 6:
             self.resizing = True
         else:
             super().mousePressEvent(event)
@@ -75,8 +82,10 @@ class NodeItem(QGraphicsEllipseItem):
     def mouseMoveEvent(self, event):
         if self.resizing and not self.anchor:
             new_radius = max(10, event.pos().manhattanLength())
-            self.radius = new_radius
-            self.setRect(-self.radius, -self.radius, self.radius * 2, self.radius * 2)
+            self.weight = new_radius / 5
+            self.setRect(self.x() + self.rect().width() / 2 - new_radius / 2, 
+                         self.y() + self.rect().height() / 2 - new_radius / 2,
+                         2 * new_radius, 2 * new_radius)
             self.center_label()
             self.resolve_collisions()
         else:
@@ -93,7 +102,7 @@ class NodeItem(QGraphicsEllipseItem):
                 dx = self.scenePos().x() - item.scenePos().x()
                 dy = self.scenePos().y() - item.scenePos().y()
                 dist = (dx ** 2 + dy ** 2) ** 0.5
-                min_dist = self.radius + item.radius
+                min_dist = self.rect().width() / 2 + item.rect().width() / 2
 
                 if dist < min_dist and dist != 0:
                     overlap = min_dist - dist + 1
@@ -124,9 +133,9 @@ class CardinalDirectionItem(QGraphicsTextItem):
         super().__init__(direction)
         self.setPos(x, y)
         
-        # Enhanced styling for cardinal directions
-        self.setFont(QFont("Arial Black", 18, QFont.Bold))
-        self.setDefaultTextColor(QColor("#2C3E50"))  # Dark blue
+        # Enhanced styling for cardinal directions - larger and more visible
+        self.setFont(QFont("Arial Black", 28, QFont.Bold))  # Even larger font size
+        self.setDefaultTextColor(QColor("#1A1A1A"))  # Very dark text for maximum contrast
         
         # Add a subtle background for better visibility
         self.setZValue(2)  # Higher than regular nodes
@@ -208,12 +217,12 @@ class GraphEditor(QGraphicsView):
         self.add_cardinal_directions()
 
     def add_cardinal_directions(self):
-        # Add cardinal direction letters at the edges of the grid
+        # Add cardinal direction letters at the edges of the grid, positioned further out to avoid overlap
         directions = {
-            "N": ((self.X_MIN + self.X_MAX)/2, self.Y_MAX),  # North at top
-            "E": (self.X_MIN, (self.Y_MIN + self.Y_MAX)/2),  # East at right
-            "S": ((self.X_MIN + self.X_MAX)/2, self.Y_MIN),  # South at bottom
-            "W": (self.X_MAX, (self.Y_MIN + self.Y_MAX)/2)   # West at left
+            "N": ((self.X_MIN + self.X_MAX)/2, self.Y_MAX + 5),  # North at top, further out
+            "E": (self.X_MIN - 5, (self.Y_MIN + self.Y_MAX)/2),  # East at right, further out
+            "S": ((self.X_MIN + self.X_MAX)/2, self.Y_MIN - 5),  # South at bottom, further out
+            "W": (self.X_MAX + 5, (self.Y_MIN + self.Y_MAX)/2)   # West at left, further out
         }
         
         for direction, (x, y) in directions.items():
@@ -227,10 +236,23 @@ class GraphEditor(QGraphicsView):
 
     def transform_to_scene_coords(self, x, y):
         """Transform grid coordinates to scene coordinates"""
-        # Normalize x from [-34, -4] to [0, 1]
-        normalized_x = (x - self.X_MIN) / self.X_RANGE
-        # Normalize y from [30, 60] to [0, 1]
-        normalized_y = (y - self.Y_MIN) / self.Y_RANGE
+        # Handle coordinates outside the normal grid range (for cardinal directions)
+        if x < self.X_MIN - 5 or x > self.X_MAX + 5 or y < self.Y_MIN - 5 or y > self.Y_MAX + 5:
+            # For cardinal directions, use a wider range
+            x_range = self.X_RANGE + 10  # Add 10 units on each side
+            y_range = self.Y_RANGE + 10  # Add 10 units on each side
+            x_min = self.X_MIN - 5
+            y_min = self.Y_MIN - 5
+        else:
+            # Normal grid coordinates
+            x_range = self.X_RANGE
+            y_range = self.Y_RANGE
+            x_min = self.X_MIN
+            y_min = self.Y_MIN
+        
+        # Normalize coordinates
+        normalized_x = (x - x_min) / x_range
+        normalized_y = (y - y_min) / y_range
         
         # Transform to scene coordinates
         scene_x = normalized_x * 700 + 150
@@ -253,40 +275,54 @@ class GraphEditor(QGraphicsView):
         return grid_x, grid_y
 
     def load_graph(self, data):
-        for i, node in enumerate(data["nodes"]):
-            nid = node["id"]
-            # Get coordinates from node data
-            x, y = node["pos"]["x"], node["pos"]["y"]
-            # Clamp coordinates to valid ranges
-            x = max(self.X_MIN, min(self.X_MAX, x))
-            y = max(self.Y_MIN, min(self.Y_MAX, y))
-            # Transform to scene coordinates
-            scene_x, scene_y = self.transform_to_scene_coords(x, y)
+        # Clear existing graph
+        self.scene().clear()
+        self.nodes = {}
+        self.edges = []
+        self.edge_pairs = set()
+
+        # Add cardinal direction indicators
+        self.add_cardinal_directions()
+
+        # Create nodes
+        for i, node_data in enumerate(data["nodes"]):
+            node_id = node_data["id"]
+            pos = node_data["pos"]
+            weight = node_data.get("weight", 5) # Default weight
+            anchor = node_data.get("anchor", False)
             
-            anchor = node.get("anchor", False)
-            weight = node.get("weight", 4)  # Default weight of 4 gives radius of 20
-            # Scale weight to a reasonable node size (between 30 and 100)
-            node_size = min(max(weight * self.WEIGHT_TO_RADIUS, 30), 100)
-
-            # Enhanced color selection
-            if anchor:
-                color = QColor("#E74C3C")  # Red for anchors
-            else:
-                # Use enhanced color palette
-                color = self.color_palette[i % len(self.color_palette)]
-
+            # Transform coordinates
+            scene_x, scene_y = self.transform_to_scene_coords(pos["x"], pos["y"])
+            
+            # Determine color
+            color = QColor("#E74C3C") if anchor else self.color_palette[i % len(self.color_palette)]
+            
             # Skip cardinal directions as they're handled separately
-            if nid not in ["N", "S", "E", "W"]:
-                item = NodeItem(nid, scene_x, scene_y, anchor, nid, color, node_size)
-                self.scene().addItem(item)
-                self.nodes[nid] = item
+            if node_id not in ["N", "S", "E", "W"]:
+                node = NodeItem(node_id, scene_x, scene_y, anchor, node_id, color, weight)
+                self.scene().addItem(node)
+                self.nodes[node_id] = node
 
+        # Create edges
+        print(f"Creating edges from {len(data['links'])} links...")
         for link in data["links"]:
-            self.add_edge(link["source"], link["target"])
+            source = link["source"]
+            target = link["target"]
+            print(f"Creating edge: {source} -> {target}")
+            self.add_edge(source, target)
 
     def add_edge(self, id1, id2):
         if (id1, id2) in self.edge_pairs or (id2, id1) in self.edge_pairs:
             return
+        
+        # Check if both nodes exist before creating the edge
+        if id1 not in self.nodes:
+            print(f"Warning: Node '{id1}' not found in graph. Skipping edge creation.")
+            return
+        if id2 not in self.nodes:
+            print(f"Warning: Node '{id2}' not found in graph. Skipping edge creation.")
+            return
+            
         edge = EdgeItem(self.nodes[id1], self.nodes[id2])
         self.scene().addItem(edge)
         self.edges.append(edge)
@@ -329,53 +365,59 @@ class GraphEditor(QGraphicsView):
             self.save_graph()
 
     def restore_node_color(self, node_id):
-        node = self.nodes[node_id]
-        if node.anchor:
-            node.setBrush(QBrush(QColor(200, 80, 200)))
-        else:
-            index = list(self.nodes.keys()).index(node_id)
-            rgba = self.color_palette[index % len(self.color_palette)]
-            node.setBrush(QBrush(QColor.fromRgbF(*rgba[:3])))
+        if node_id in self.nodes:
+            node = self.nodes[node_id]
+            # Find original color (this part needs improvement if colors are dynamic)
+            # For now, we revert to a default or based on anchor status
+            original_color = QColor("#E74C3C") if node.anchor else QColor("gray")
+            
+            # A better way is to find its original index in the loaded data
+            # but this is a quick fix.
+            # Find node in self.nodes and get its original color from palette
+            # This logic assumes the order hasn't changed, which is not robust
+            all_nodes = list(self.nodes.keys())
+            if node_id in all_nodes:
+                idx = all_nodes.index(node_id)
+                original_color = self.color_palette[idx % len(self.color_palette)]
+
+            node.setBrush(QBrush(original_color))
 
     def save_graph(self):
-        """Legacy save method - now just calls save_new_version on the parent window"""
-        if hasattr(self.parent(), "save_new_version"):
-            self.parent().save_new_version()
+        """Saves the current graph state to a JSON file."""
+        graph_data = self.get_graph_data()
+        file_path, _ = QFileDialog.getSaveFileName(self, "Save Graph", "", "JSON Files (*.json)")
+        if file_path:
+            with open(file_path, 'w') as f:
+                json.dump(graph_data, f, indent=4)
+            print(f"Graph saved to {file_path}")
 
     def get_graph_data(self):
-        """Get the current state of the graph as a data structure"""
-        nodes = []
-        for nid, item in self.nodes.items():
-            # Skip cardinal direction nodes when saving
-            if nid in ["N", "E", "S", "W"]:
-                continue
-                
-            # Get scene coordinates and transform to grid coordinates
-            scene_x, scene_y = item.scenePos().x(), item.scenePos().y()
-            grid_x, grid_y = self.transform_to_grid_coords(scene_x, scene_y)
-            
-            node_data = {
-                "id": nid,
-                "pos": {"x": round(grid_x, 2), "y": round(grid_y, 2)},
-                "anchor": item.anchor
-            }
-            if not item.anchor:
-                # Convert radius back to weight using the same conversion factor
-                node_data["weight"] = round(item.radius * self.RADIUS_TO_WEIGHT, 1)
-            nodes.append(node_data)
+        """Constructs a JSON-serializable dictionary from the current graph state."""
+        nodes_data = []
+        for node_id, item in self.nodes.items():
+            if isinstance(item, NodeItem):
+                scene_pos = item.scenePos()
+                # Use the center of the item for more accurate position
+                center_x = scene_pos.x() + item.rect().width() / 2
+                center_y = scene_pos.y() + item.rect().height() / 2
+                grid_x, grid_y = self.transform_to_grid_coords(center_x, center_y)
 
-        links = [{"source": e.node1.node_id, "target": e.node2.node_id} 
-                for e in self.edges 
-                if e.node1.node_id not in ["N", "E", "S", "W"] 
-                and e.node2.node_id not in ["N", "E", "S", "W"]]
+                node_info = {
+                    "id": node_id,
+                    "pos": {"x": round(grid_x, 2), "y": round(grid_y, 2)},
+                    "anchor": item.anchor,
+                    "weight": item.weight # Read the stored weight directly
+                }
+                nodes_data.append(node_info)
 
-        return {
-            "nodes": nodes,
-            "links": links,
-            "directed": False,
-            "multigraph": False,
-            "graph": {}
-        }
+        links_data = []
+        for edge in self.edges:
+            links_data.append({
+                "source": edge.node1.node_id,
+                "target": edge.node2.node_id
+            })
+
+        return {"nodes": nodes_data, "links": links_data}
 
 
 class MainWindow(QMainWindow):
