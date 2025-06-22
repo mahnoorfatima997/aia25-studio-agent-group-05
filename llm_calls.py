@@ -42,29 +42,20 @@ def generate_concept_with_conversation(conversation_messages):
     chat_messages = [
             {
                 "role": "system",
-                "content": """
-                        You are a leading landscape architect and designer.
+                "content": """You are a passionate landscape architect who loves collaborating with clients to bring their vision to life.
 
-                        Your task is to generate a **short**, **clear**, and **practical** concept for a courtyard design based on the user's input and the provided attributes.
+Based on what the user has shared with you, let's create a beautiful courtyard concept together. Think of this as a conversation between design partners.
 
-                        Limit your response to **a single paragraph**, **no more than 3 sentences** total. Use concise language. Make sure the areas add up to the total courtyard area. Keep one part of the courtyard open and accessible, with no proper function.
+Your response should be concise and inspiring - just 3-4 lines that capture the essence of their vision. Mention the key elements that will make their courtyard special and how different areas will work together.
 
-                        Mention:
-                        - Key spatial strategies
-                        - Suggested materials
-                        - General use of areas
+Then, in a natural way, include the technical details they need:
+"We're envisioning an outdoor space with a total courtyard area of {plot_area} sqm. The design includes {area_descriptions}. The site supports {tree_count} trees across {tree_species_count} different species. The advantages and disadvantages of the design are as follows: {advantages} and {disadvantages}."
 
-                        Then, include all relevant spatial areas and performance scores in the following format:
+Also develop a spatial matrix in the form of numbered relationships between the various areas and functions, assigning a grid point to each area based on its proximity to other areas. Be sure to include tree, play, rest, pond and flower as zones defining the courtyard division.
 
-                        "We envision an outdoor space with a total courtyard area of {plot_area} sqm. The design includes {area_descriptions}. The site supports {tree_count} trees across {tree_species_count} different species. The advantages and disadvantages of the design are as follows: {advantages} and {disadvantages}."
+Only use the attributes provided in the JSON. Do not assume or fabricate additional ones. Do not include explanations or extra information.
 
-                        Where:
-                        - `{area_descriptions}` is a list of all area types (e.g., social, calm, permeable, garden) and their sizes (e.g., "20 sqm of social zones, 15 sqm of calm spaces").
-
-                        Also develop a spatial matrix in the form of numbered relationships between the various areas and functions, assigning a grid point to each area based on its proximity to other areas. Be sure to include tree, play, rest, pond and flower as zones defining the courtyard division.
-
-                        Only use the attributes provided in the JSON. Do not assume or fabricate additional ones. Do not include explanations or extra information.
-                        """,
+Keep it warm and conversational, but concise!""",
             },
         ]
     chat_messages.extend(conversation_messages)
@@ -465,8 +456,11 @@ def extract_attributes_with_conversation(conversation_messages, concept):
     "role": "user",
     "content": """
         Here is the concept: {concept}
+        
+        Here are the user messages: {user_messages}
     """.format(
         concept=concept,
+        user_messages=conversation_messages
     )
     })
     chat_messages.extend(conversation_messages)
@@ -1013,16 +1007,27 @@ def criticize_courtyard_graph(graph):
     chat_messages = [
         {
             "role": "system",
-            "content": """
-                You are a landscape architect and graph specialist.
+            "content": """You are a thoughtful and encouraging landscape architect who loves helping designers grow and improve their work.
 
-                Your job is to criticize the graph created and to point out things that could be made better for it. 
+Your job is to provide constructive feedback on the graph created, pointing out both its strengths and opportunities for enhancement. Think of yourself as a supportive mentor who wants to see their student succeed.
 
-                You should talk about what spaces could be relocated and why. You mention how environmental and spatial problems could be better solved with another layout. 
-                You should also appreciate the current layout and list out the advantages. List them out in bullet points.
+**Your Approach:**
+- Start by appreciating what's working well - every design has strengths worth celebrating
+- Then gently suggest improvements that could make the space even better
+- Use warm, encouraging language throughout
+- Be specific about what could be relocated and why, but frame it as opportunities rather than problems
+- Discuss how environmental and spatial challenges could be addressed with thoughtful adjustments
+- Always end with encouragement and a clear next step
 
-                Ask the user if they want to go back and redo their concept.
-                """
+**Structure your feedback like this:**
+1. **What's Working Well:** List the advantages and strengths of the current layout
+2. **Opportunities for Enhancement:** Suggest specific improvements with explanations
+3. **Environmental Considerations:** Discuss how the layout could better respond to sun, wind, and other natural factors
+4. **Next Steps:** Encourage them to consider refining their concept based on this feedback
+
+Ask them if they'd like to revisit their concept with these insights in mind, but make it feel like an exciting opportunity rather than a correction.
+
+Remember: Great design is iterative, and every iteration brings them closer to their vision!"""
         },
     ]
     print("Criticizing courtyard graph with conversation history...", chat_messages)
@@ -1033,6 +1038,63 @@ def criticize_courtyard_graph(graph):
 
     print("Response from LLM for criticize_courtyard_graph:", response.choices[0].message.content)
     return response.choices[0].message.content
+
+def generate_design_tip(phase, concept, design_data):
+    """
+    Generates a proactive, context-aware design tip based on the current phase and data.
+    """
+    # Create a string representation of the design data for the prompt
+    design_data_str = json.dumps(design_data, indent=2, default=str)
+
+    system_prompt = f"""
+        You are a wise and experienced landscape architect who loves mentoring other designers. You have a warm, encouraging personality and always see the potential in every design.
+
+        Your goal is to provide a single, thoughtful tip that feels like advice from a trusted friend and mentor. The user is currently in the '{phase}' phase of their design process.
+
+        **Your Style:**
+        - Be encouraging and constructive, like a supportive mentor
+        - Use warm, conversational language
+        - Show genuine interest in their design journey
+        - Keep your tip to **1-2 concise sentences**
+        - Frame it as helpful guidance or an inspiring question
+        - Don't just repeat what they've said - add new value by making connections they might have missed
+
+        **Phase-Specific Guidance:**
+        - **concept:** After they've written a concept, suggest what to focus on next with enthusiasm. (e.g., "What a lovely vision! As we move to defining functions, I'm curious - have you thought about how a 'cafe' might serve as a social hub connecting different areas?")
+        - **functions:** After they've listed functions, suggest potential attributes to consider. (e.g., "Great list of functions! When we define attributes next, I'd love to explore material choices with you. Do you see rustic wooden benches in the 'rest' area, or perhaps something more modern?")
+        - **attributes:** After they add attributes, hint at the upcoming graph stage. (e.g., "These attributes add such wonderful detail! Soon, we'll visualize these spaces together. Think about which functions feel most important to you - they might deserve to be larger or more central.")
+        - **graph:** While they are viewing the graph, suggest a specific interaction or relationship to consider. (e.g., "Try moving the 'pond' closer to the 'rest' area - I think it would create such a tranquil corner and enhance the sensory experience.")
+        - **criticism:** After they ask for criticism, give a summary tip that empowers them. (e.g., "Remember that great design is a journey of discovery. Feel free to revisit earlier phases anytime - that's how the best spaces evolve!")
+
+        You must output only the single tip as a string. No JSON, no extra text, no quotation marks.
+    """
+
+    user_prompt = f"""
+        # Current Design State
+        ## Phase: {phase}
+        ## Concept: {concept}
+        ## Current Design Data:
+        {design_data_str}
+    """
+
+    chat_messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt}
+    ]
+
+    print("Generating advisor tip...")
+    try:
+        response = client.chat.completions.create(
+            model=completion_model,
+            messages=chat_messages,
+            temperature=0.6,
+            max_tokens=100
+        )
+        tip = response.choices[0].message.content.strip()
+        return tip
+    except Exception as e:
+        print(f"Error generating advisor tip: {e}")
+        return "Think about how all the design elements can work together in harmony."
 
 def extract_tree_placement(concept, attributes):
     chat_messages = [
@@ -1317,5 +1379,102 @@ A sunlit courtyard with a central calm area (grid 10,10), social zones to the so
         messages=messages
     )
     return response.choices[0].message.content
+
+def generate_human_functions_response(extracted_functions):
+    """
+    Generates a human-like response for the functions phase while keeping the same data processing.
+    """
+    try:
+        # Convert the functions to a readable format
+        functions_list = []
+        for func_name, direction in extracted_functions.items():
+            if direction:
+                functions_list.append(f"{func_name} (facing {direction})")
+            else:
+                functions_list.append(func_name)
+        
+        functions_text = ", ".join(functions_list)
+        
+        response = client.chat.completions.create(
+            model=completion_model,
+            messages=[
+                {"role": "system", "content": """You are a warm, enthusiastic landscape architect who loves helping clients visualize their outdoor spaces.
+
+The user has just defined the external functions for their courtyard design. Your job is to briefly acknowledge what they've shared in a friendly, conversational way.
+
+**Your Style:**
+- Be excited about their choices
+- Keep it to ONE brief, encouraging sentence
+- Mention the functions they've chosen
+- End with a warm transition to the next phase
+
+**Example Response:**
+"Perfect! I love your choice of a cafe on the north side and library facing east - these will create such lovely spaces around your courtyard. Now let's add some specific details about materials and plants to bring your vision to life!" """},
+                {"role": "user", "content": f"The user has defined these external functions: {functions_text}"}
+            ],
+            temperature=0.7,
+            max_tokens=80
+        )
+        
+        return response.choices[0].message.content.strip()
+        
+    except Exception as e:
+        print(f"Error generating human functions response: {e}")
+        # Fallback to a simple human-like response
+        functions_list = []
+        for func_name, direction in extracted_functions.items():
+            if direction:
+                functions_list.append(f"{func_name} (facing {direction})")
+            else:
+                functions_list.append(func_name)
+        
+        return f"Great! I've captured your external functions: {', '.join(functions_list)}. These will help shape how your courtyard connects to the surrounding spaces. Does this look right to you?"
+
+
+def generate_human_attributes_response(attributes):
+    """
+    Generates a human-like response for the attributes phase while keeping the same data processing.
+    """
+    try:
+        # Convert attributes to a readable format
+        attributes_list = []
+        for key, value in attributes.items():
+            if key and value:
+                attributes_list.append(f"{key}: {value}")
+        
+        attributes_text = ", ".join(attributes_list)
+        
+        response = client.chat.completions.create(
+            model=completion_model,
+            messages=[
+                {"role": "system", "content": """You are a passionate landscape architect who loves the details that make outdoor spaces special.
+
+The user has just added specific attributes to their courtyard design. Your job is to briefly acknowledge these details and show enthusiasm.
+
+**Your Style:**
+- Be genuinely excited about the specific details they've chosen
+- Keep it to ONE brief, encouraging sentence
+- Mention how these attributes will enhance the space
+- End with a warm transition to the next step
+
+**Example Response:**
+"Wonderful choices! I love how the oak trees and wooden benches will create such a welcoming atmosphere. Now let's visualize how all these elements will work together in your layout!" """},
+                {"role": "user", "content": f"The user has added these attributes to their design: {attributes_text}"}
+            ],
+            temperature=0.7,
+            max_tokens=80
+        )
+        
+        return response.choices[0].message.content.strip()
+        
+    except Exception as e:
+        print(f"Error generating human attributes response: {e}")
+        # Fallback to a simple human-like response
+        attributes_list = []
+        for key, value in attributes.items():
+            if key and value:
+                attributes_list.append(f"{key}: {value}")
+        
+        return f"Perfect! I've added these wonderful details to your design: {', '.join(attributes_list)}. These attributes will really bring your courtyard to life. Now let's visualize how everything will work together!"
 
 

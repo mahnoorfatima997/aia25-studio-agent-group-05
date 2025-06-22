@@ -9,9 +9,12 @@ from PyQt5.QtWidgets import QApplication
 from graph_query import GraphQueryEngine
 import os
 import datetime
+from flask_cors import CORS
+import json
 
 
 app = Flask(__name__)
+CORS(app)
 
 area = None
 external_functions = None
@@ -26,6 +29,24 @@ length = None
 query_engine = None  # Global variable for the graph query engine
 query_results = None  # Global variable to store the latest query results
 
+# --- Global In-Memory Storage ---
+# Simple dictionary to hold the latest data received from Grasshopper
+# In a production scenario, you might replace this with a database or a more robust solution
+latest_data = {
+    "plot_area": {"area": "400", "width": "20", "length": "20"},
+    "external_functions": {},
+    "geometry_data": {},
+    "graph_data": {},
+    "tree_data": {},
+    "query_results": {},
+    "external_function_placement": {}
+}
+
+# --- New Command Queue for Screenshot ---
+command_queue = {"command": None, "payload": {}}
+command_status = {"status": "idle", "result": {}}
+command_lock = threading.Lock()
+
 @app.route('/plot_area', methods=['GET', 'POST'])
 def get_plot_area():
     global area
@@ -35,7 +56,7 @@ def get_plot_area():
         print("Received user input:", area)
         return jsonify({"area": area, "width": width, "length": length})
     else:  # GET
-        return jsonify({"area": area, "width": width, "length": length})
+        return jsonify(latest_data.get("plot_area", {}))
     
 @app.route('/external_functions', methods=['POST', 'GET'])
 def handle_external_functions():
@@ -287,6 +308,47 @@ def get_query_results():
     if query_results is None:
         return jsonify({"error": "No query results available. Please run a query first."})
     return jsonify({"query_results": query_results})
+
+# --- New Endpoints for Screenshot Command System ---
+
+@app.route('/command', methods=['GET', 'POST', 'DELETE'])
+def handle_command():
+    """Endpoint for the UI to send commands and for Grasshopper to fetch them."""
+    global command_queue, command_status
+    with command_lock:
+        if request.method == 'POST':
+            data = request.get_json()
+            command_queue['command'] = data.get('command')
+            command_queue['payload'] = data.get('payload', {})
+            # Reset status for the new command
+            command_status['status'] = 'pending'
+            command_status['result'] = {}
+            print(f"Received command: {command_queue['command']}")
+            return jsonify({"success": True, "message": "Command queued."})
+        
+        elif request.method == 'GET':
+            return jsonify(command_queue)
+            
+        elif request.method == 'DELETE':
+            command_queue['command'] = None
+            command_queue['payload'] = {}
+            print("Command queue cleared.")
+            return jsonify({"success": True, "message": "Command cleared."})
+
+@app.route('/command_status', methods=['GET', 'POST'])
+def handle_command_status():
+    """Endpoint for Grasshopper to report command status and for UI to check it."""
+    global command_status
+    with command_lock:
+        if request.method == 'POST':
+            data = request.get_json()
+            command_status['status'] = data.get('status', 'complete')
+            command_status['result'] = data.get('result', {})
+            print(f"Received command status update: {command_status['status']}")
+            return jsonify({"success": True, "message": "Status updated."})
+
+        elif request.method == 'GET':
+            return jsonify(command_status)
 
 def run_flask():
     app.run(debug=False, use_reloader=False)  # Run Flask server in a separate thread

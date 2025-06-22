@@ -21,11 +21,13 @@ class NodeItem(QGraphicsEllipseItem):
     def __init__(self, node_id, x, y, anchor=False, label="", color=QColor("gray"), weight=20):
         # The radius is now derived from the weight
         radius = weight * 5 # Using a constant factor for visualization
-        super().__init__(x - radius, y - radius, 2 * radius, 2 * radius)
+        super().__init__(-radius, -radius, 2 * radius, 2 * radius) # Draw around origin
+        self.setPos(x, y) # Set the center position in the scene
         
         self.node_id = node_id
         self.anchor = anchor
         self.weight = weight # Store the weight directly
+        self.resizing = False # Restore the resizing flag
         self.setBrush(QBrush(color))
         self.setPen(QPen(Qt.black, 2))
         self.setFlag(QGraphicsItem.ItemIsMovable)
@@ -37,11 +39,8 @@ class NodeItem(QGraphicsEllipseItem):
 
     def center_label(self):
         label_rect = self.label.boundingRect()
-        ellipse_rect = self.rect()
-        self.label.setPos(
-            ellipse_rect.x() + (ellipse_rect.width() - label_rect.width()) / 2,
-            ellipse_rect.y() + (ellipse_rect.height() - label_rect.height()) / 2
-        )
+        # Center the label within the ellipse, which is centered at (0,0)
+        self.label.setPos(-label_rect.width() / 2, -label_rect.height() / 2)
 
     def wheelEvent(self, event):
         """Handle mouse wheel scrolling to change node weight."""
@@ -60,9 +59,7 @@ class NodeItem(QGraphicsEllipseItem):
         
         # Update the visual radius based on the new weight
         new_radius = self.weight * 5
-        self.setRect(self.x() + self.rect().width()/2 - new_radius, 
-                     self.y() + self.rect().height()/2 - new_radius,
-                     2 * new_radius, 2 * new_radius)
+        self.setRect(-new_radius, -new_radius, 2 * new_radius, 2 * new_radius)
         self.center_label()
 
     def hoverMoveEvent(self, event):
@@ -73,19 +70,21 @@ class NodeItem(QGraphicsEllipseItem):
         super().hoverMoveEvent(event)
 
     def mousePressEvent(self, event):
-        dist = event.pos().manhattanLength()
-        if abs(dist - self.rect().width() / 2) < 6:
+        # Position is relative to the item's center (0,0)
+        dist_from_center = (event.pos().x()**2 + event.pos().y()**2)**0.5
+        radius = self.rect().width() / 2
+        
+        # Check if the click is near the edge for resizing
+        if abs(dist_from_center - radius) < 6:
             self.resizing = True
         else:
             super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
         if self.resizing and not self.anchor:
-            new_radius = max(10, event.pos().manhattanLength())
+            new_radius = max(10, (event.pos().x()**2 + event.pos().y()**2)**0.5)
             self.weight = new_radius / 5
-            self.setRect(self.x() + self.rect().width() / 2 - new_radius / 2, 
-                         self.y() + self.rect().height() / 2 - new_radius / 2,
-                         2 * new_radius, 2 * new_radius)
+            self.setRect(-new_radius, -new_radius, 2 * new_radius, 2 * new_radius)
             self.center_label()
             self.resolve_collisions()
         else:
@@ -397,10 +396,8 @@ class GraphEditor(QGraphicsView):
         for node_id, item in self.nodes.items():
             if isinstance(item, NodeItem):
                 scene_pos = item.scenePos()
-                # Use the center of the item for more accurate position
-                center_x = scene_pos.x() + item.rect().width() / 2
-                center_y = scene_pos.y() + item.rect().height() / 2
-                grid_x, grid_y = self.transform_to_grid_coords(center_x, center_y)
+                # Use the center of the item for more accurate position, which is now just scenePos()
+                grid_x, grid_y = self.transform_to_grid_coords(scene_pos.x(), scene_pos.y())
 
                 node_info = {
                     "id": node_id,
@@ -417,7 +414,13 @@ class GraphEditor(QGraphicsView):
                 "target": edge.node2.node_id
             })
 
-        return {"nodes": nodes_data, "links": links_data}
+        return {
+            "directed": False,
+            "multigraph": False,
+            "graph": {},
+            "nodes": nodes_data, 
+            "links": links_data
+        }
 
 
 class MainWindow(QMainWindow):

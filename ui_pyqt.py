@@ -2,19 +2,37 @@ import requests
 from llm_calls import *
 from PyQt5.QtWidgets import (
     QMainWindow, QVBoxLayout, QWidget, QLabel, QLineEdit, QPushButton, QTextBrowser, QHBoxLayout,
-    QTabWidget, QTextEdit, QComboBox, QMessageBox
+    QTabWidget, QTextEdit, QComboBox, QMessageBox, QApplication
 )
+from PyQt5.QtGui import QPixmap
+from PyQt5.QtCore import Qt, pyqtSignal, QObject
 import re
 from graph_gh import GraphEditor, MainWindow, QApplication
 import csv
 import os
 import random
 import json
+import threading
+import time
+import base64
+from plan_export import export_courtyard_plan
+
+class ImageGenerationSignals(QObject):
+    """Signals for safely updating UI from background threads"""
+    status_update = pyqtSignal(str)
+    image_update = pyqtSignal(str)
+    error_update = pyqtSignal(str)
 
 class FlaskClientChatUI(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Courtyard Design Copilot")
+        
+        # Initialize signals for image generation
+        self.image_signals = ImageGenerationSignals()
+        self.image_signals.status_update.connect(self.update_image_status)
+        self.image_signals.image_update.connect(self.update_image_display)
+        self.image_signals.error_update.connect(self.update_image_error)
         
         # Set window style
         self.setStyleSheet("""
@@ -122,6 +140,12 @@ class FlaskClientChatUI(QMainWindow):
         # Create the graph query tab
         self.create_query_tab()
 
+        # Create the image generation tab
+        self.create_image_generation_tab()
+
+        # Create the plan export tab
+        self.create_plan_export_tab()
+
         # Initialize other properties
         self.phases = {
             "concept": [],
@@ -204,20 +228,26 @@ class FlaskClientChatUI(QMainWindow):
                 assistant_message = generate_concept_with_conversation(self.phases[self.current_phase])
                 self.concept = assistant_message
             elif self.current_phase == "functions":
-                assistant_message = extract_external_functions(self.phases[self.current_phase])
-                json_llm_response = extract_json(assistant_message)
+                # Process the data first
+                llm_response = extract_external_functions(self.phases[self.current_phase])
+                json_llm_response = extract_json(llm_response)
                 self.extracted_functions = json_llm_response["external_functions"]
                 self.set_extracted_functions()
-                assistant_message = f"Your requirements have been saved as follows: {json_llm_response}<br>Does this look good? If so, press continue."
+                # Generate human-like response
+                assistant_message = generate_human_functions_response(self.extracted_functions)
             elif self.current_phase == "attributes":
-                assistant_message = extract_attributes_with_conversation(self.phases[self.current_phase], self.concept)
-                json_llm_response = extract_json(assistant_message)
+                # Process the data first
+                llm_response = extract_attributes_with_conversation(self.phases[self.current_phase], self.concept)
+                json_llm_response = extract_json(llm_response)
                 self.attributes = json_llm_response
-                assistant_message = f"I have added your requirements to the total list of attributes. {json_llm_response}Is this okay? If so, press continue."
+                # Generate human-like response
+                assistant_message = generate_human_attributes_response(self.attributes)
                 
                 # Send geometry and tree data to server
                 self.geometry_data()
                 self.get_tree_data()
+                # Update plan summary in Plan Export tab
+                self.update_plan_summary()
                 
                 # Send geometry data to server with proper headers
                 headers = {
@@ -233,7 +263,7 @@ class FlaskClientChatUI(QMainWindow):
                 if geometry_data_response.status_code == 200:
                     func_data = geometry_data_response.json()
                     self.chat_display.append(self.create_assistant_message(
-                        f"Geometry data sent successfully to server. Response: {func_data}", 
+                        "Excellent! I've successfully sent all your design data to the visualization system. Your courtyard concept is now ready to be brought to life in the next phase!", 
                         "success"
                     ))
                 else:
@@ -249,6 +279,9 @@ class FlaskClientChatUI(QMainWindow):
 
             # Add assistant message to current phase
             self.phases[self.current_phase].append({"role": "assistant", "content": assistant_message})
+
+            # Update advisor tip
+            self.update_advisor_tip()
 
             # Show continue button if needed
             if self.current_phase in ["functions", "attributes"]:
@@ -274,10 +307,13 @@ class FlaskClientChatUI(QMainWindow):
             self.continue_button.setVisible(False)
             # Restore automatic phase question display
             self.show_phase_question()
+            
+            # Update advisor tip for the new phase
+            self.update_advisor_tip()
+            
             if self.current_phase == 'graph':
                 self.graph()
                 self.export_csv_button.setVisible(True)  # Show export button when in graph phase
-                self.continue_button.setVisible(True)    # Show continue button in graph phase
             elif self.current_phase == 'criticism':
                 self.export_csv_button.setVisible(False) # Hide export button in criticism phase
                 self.continue_button.setVisible(False)   # Hide continue button in criticism phase
@@ -318,6 +354,10 @@ class FlaskClientChatUI(QMainWindow):
             # self.chat_display.append(phase_change_html)
             # Restore automatic phase question display
             self.show_phase_question()
+            
+            # Update advisor tip for the previous phase
+            self.update_advisor_tip()
+            
             # If we're going back from graph phase, close the graph window
             if phases[current_index] == 'graph' and hasattr(self, 'graph_window'):
                 self.graph_window.close()
@@ -575,10 +615,7 @@ class FlaskClientChatUI(QMainWindow):
                 if tree_data_response.status_code == 200:
                     response_data = tree_data_response.json()
                     print("Server response:", response_data)
-                    self.chat_display.append(self.create_assistant_message(
-                        f"Tree data sent successfully to server. Response: {response_data}", 
-                        "success"
-                    ))
+                    # Removed the success message - tree data generation happens silently
                 else:
                     raise Exception(f"Server returned status code {tree_data_response.status_code}")
                     
@@ -606,6 +643,9 @@ class FlaskClientChatUI(QMainWindow):
             )
             self.chat_display.append(error_html)
             print(f"Error in tree_data: {e}")
+
+        # Update plan summary in Plan Export tab
+        self.update_plan_summary()
 
     def create_networkx_graph(self, graph_json):
         """
@@ -645,7 +685,7 @@ class FlaskClientChatUI(QMainWindow):
             
             if graph_response.status_code == 200:
                 self.chat_display.append(self.create_assistant_message(
-                    "Initial graph layout sent to Grasshopper. You can now modify the layout and use the Export button to save your changes.",
+                    "Fantastic! I've created a visual layout of your courtyard and sent it to the 3D modeling system. You can now see how all your spaces work together and make adjustments to perfect the flow. Use the Export button when you're happy with the layout!",
                     "success"
                 ))
             else:
@@ -748,6 +788,28 @@ class FlaskClientChatUI(QMainWindow):
         self.chat_display.setReadOnly(True)
         self.chat_display.setMinimumHeight(400)
         chat_layout.addWidget(self.chat_display)
+
+        # Advisor's Corner
+        advisor_label = QLabel("💡 Advisor's Corner:")
+        advisor_label.setStyleSheet("font-size: 16px; font-weight: bold; margin-top: 10px;")
+        chat_layout.addWidget(advisor_label)
+
+        self.advisor_panel = QTextEdit()
+        self.advisor_panel.setReadOnly(True)
+        self.advisor_panel.setPlaceholderText("Helpful tips will appear here as you design...")
+        self.advisor_panel.setFixedHeight(80) # A compact height for 1-2 sentences
+        self.advisor_panel.setStyleSheet("""
+            QTextEdit {
+                background-color: #FFFDE7; /* A warm, parchment-like yellow */
+                border: 1px solid #FFF9C4;
+                border-radius: 8px;
+                padding: 10px;
+                font-size: 17px;
+                font-style: italic;
+                color: #5D4037; /* A soft brown for the text */
+            }
+        """)
+        chat_layout.addWidget(self.advisor_panel)
 
         # Input area container
         input_container = QWidget()
@@ -884,6 +946,122 @@ class FlaskClientChatUI(QMainWindow):
 
         # Add the chat tab to the tab widget
         self.tab_widget.addTab(chat_widget, "Design Assistant")
+
+    def create_image_generation_tab(self):
+        """Creates the tab for AI image generation."""
+        image_gen_widget = QWidget()
+        layout = QVBoxLayout(image_gen_widget)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+
+        # Title
+        title = QLabel("AI-Powered Image Generation")
+        title.setStyleSheet("font-size: 24px; font-weight: bold;")
+        layout.addWidget(title)
+
+        # Description
+        description = QLabel(
+            "This tool captures your current Rhino viewport, then uses an AI model "
+            "to generate a conceptual, artistic rendering based on the view and your design brief."
+        )
+        description.setWordWrap(True)
+        description.setStyleSheet("font-size: 16px; margin-bottom: 15px;")
+        layout.addWidget(description)
+
+        # Generate Button
+        self.generate_image_button = QPushButton("📸 Generate Image from Rhino Viewport")
+        self.generate_image_button.setStyleSheet("""
+            QPushButton {
+                background-color: #673AB7; /* A deep purple for creativity */
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 10px 25px;
+                font-weight: bold;
+                font-size: 22px;
+            }
+            QPushButton:hover {
+                background-color: #512DA8;
+            }
+            QPushButton:pressed {
+                background-color: #311B92;
+            }
+        """)
+        self.generate_image_button.clicked.connect(self.handle_generate_image)
+        layout.addWidget(self.generate_image_button)
+
+        # Status Display
+        self.image_gen_status_display = QTextBrowser()
+        self.image_gen_status_display.setPlaceholderText("Status updates will appear here...")
+        self.image_gen_status_display.setFixedHeight(100)
+        self.image_gen_status_display.setStyleSheet("""
+            QTextBrowser {
+                background-color: #f0f0f0;
+                border: 1px solid #E0E0E0;
+                border-radius: 8px;
+                padding: 10px;
+                font-size: 16px;
+            }
+        """)
+        layout.addWidget(self.image_gen_status_display)
+
+        # Image Display Area
+        self.image_display_label = QLabel("Generated image will appear here.")
+        self.image_display_label.setAlignment(Qt.AlignCenter)
+        self.image_display_label.setMinimumHeight(400)
+        self.image_display_label.setStyleSheet("""
+            QLabel {
+                background-color: #e8e8e8;
+                border: 2px dashed #cccccc;
+                border-radius: 8px;
+                color: #888888;
+                font-size: 18px;
+            }
+        """)
+        layout.addWidget(self.image_display_label, 1) # Give it stretch factor
+
+        self.tab_widget.addTab(image_gen_widget, "🖼️ Image Generation")
+
+    def update_image_status(self, message):
+        """Update the image generation status display (called from main thread)"""
+        self.image_gen_status_display.setText(message)
+
+    def update_image_display(self, image_path):
+        """Update the image display (called from main thread)"""
+        try:
+            pixmap = QPixmap(image_path)
+            self.image_display_label.setPixmap(pixmap.scaled(
+                self.image_display_label.size(),
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            ))
+        except Exception as e:
+            self.image_display_label.setText(f"Failed to load image: {e}")
+
+    def update_image_error(self, error_message):
+        """Update the image display with an error (called from main thread)"""
+        self.image_display_label.setText(error_message)
+
+    def update_advisor_tip(self):
+        """Fetches and displays a proactive design tip from the AI advisor."""
+        try:
+            # Gather the current context for the advisor
+            # We can expand this with more design_data as needed for richer tips
+            context_data = {
+                "concept": self.concept if hasattr(self, 'concept') else "Not yet defined.",
+                "functions": self.phases.get("functions", []),
+                "attributes": self.phases.get("attributes", [])
+            }
+
+            # Call the new LLM function to get a tip
+            tip = generate_design_tip(self.current_phase, self.concept, context_data)
+            
+            # Display the tip
+            self.advisor_panel.setText(tip)
+
+        except Exception as e:
+            print(f"Error updating advisor tip: {e}")
+            # Silently fail, as this is a non-critical feature
 
     def create_query_tab(self):
         """Create the graph query interface tab"""
@@ -1229,6 +1407,10 @@ class FlaskClientChatUI(QMainWindow):
             greeting = response.choices[0].message.content
         except Exception as e:
             greeting = "Hello! I'm your courtyard design copilot. What would you like to see in your courtyard design?"
+        
+        # Also update the advisor tip on startup
+        self.update_advisor_tip()
+        
         return greeting
 
     def send_query_results_to_grasshopper(self):
@@ -1288,12 +1470,243 @@ class FlaskClientChatUI(QMainWindow):
             delattr(self, 'current_query_results')
         self.send_query_to_gh_button.setVisible(False)
 
+    def handle_generate_image(self):
+        """Triggers the Rhino screenshot and then sends to the image generation backend."""
+        self.image_signals.status_update.emit("Requesting a screenshot from Rhino... Please wait.")
+        self.image_signals.image_update.emit("")  # Clear previous image
+        QApplication.processEvents() # Update the UI
+
+        # Define a temporary path for the screenshot
+        temp_dir = os.path.join(os.path.expanduser("~"), "temp_copilot_images")
+        if not os.path.exists(temp_dir):
+            os.makedirs(temp_dir)
+        screenshot_path = os.path.join(temp_dir, "rhino_viewport.png")
+
+        # The function that will run in a separate thread to avoid freezing the UI
+        def _task():
+            try:
+                # 1. Post the command to the server
+                command_payload = {
+                    "command": "take_screenshot",
+                    "payload": {"path": screenshot_path}
+                }
+                requests.post("http://localhost:5000/command", json=command_payload)
+
+                # 2. Poll for completion status
+                for _ in range(20): # Poll for up to 20 seconds
+                    status_response = requests.get("http://localhost:5000/command_status")
+                    if status_response.status_code == 200:
+                        status_data = status_response.json()
+                        if status_data.get("status") == "complete":
+                            print("Screenshot command complete.")
+                            saved_path = status_data.get("result", {}).get("path")
+                            
+                            if saved_path and os.path.exists(saved_path):
+                                self.send_image_to_backend(saved_path)
+                            else:
+                                self.image_signals.status_update.emit(f"Error: Screenshot file not found at path: {saved_path}")
+                                self.image_signals.error_update.emit("Image Generation Failed")
+                            return
+                    time.sleep(1)
+                
+                self.image_signals.status_update.emit("Error: Timed out waiting for Rhino to take a screenshot.")
+                self.image_signals.error_update.emit("Image Generation Failed")
+
+            except Exception as e:
+                self.image_signals.status_update.emit(f"An error occurred during image generation: {e}")
+                self.image_signals.error_update.emit("Image Generation Failed")
+
+        threading.Thread(target=_task).start()
+
+    def send_image_to_backend(self, image_path):
+        """Reads an image, encodes it, displays it, and sends it to the image generation backend."""
+        try:
+            # Display the captured image using signals
+            self.image_signals.image_update.emit(image_path)
+            self.image_signals.status_update.emit("Screenshot captured! Generating AI-enhanced visualization...")
+            
+            # Generate a prompt using the existing LLM function
+            try:
+                # Get the design data for prompt generation
+                if hasattr(self, 'design_data') and self.design_data:
+                    # Extract the data needed for prompt generation
+                    concept = getattr(self, 'concept', 'A beautiful courtyard design')
+                    attributes = getattr(self, 'attributes', {})
+                    
+                    # Use the existing generate_image_prompt function from llm_calls
+                    from llm_calls import generate_image_prompt
+                    
+                    # Get the other required data (you may need to adjust these based on what's available)
+                    connections = self.design_data.get("links", {})
+                    targets = self.design_data.get("positions", {})
+                    spaces = self.design_data.get("spaces", {})
+                    pwr = getattr(self, 'tree_data', {}).get("PWR", {})
+                    tree_placement = getattr(self, 'tree_data', {}).get("tree_placement", {})
+                    
+                    # Generate the prompt
+                    generated_prompt = generate_image_prompt(concept, attributes, connections, targets, spaces, pwr, tree_placement)
+                    
+                    self.image_signals.status_update.emit("Prompt generated! Sending to AI image generation service...")
+                    
+                    # Call the image generation function from image_gen.py
+                    from image_gen import generate_ai_enhanced_image
+                    
+                    success, output_path, message = generate_ai_enhanced_image(image_path, generated_prompt)
+                    
+                    if success:
+                        # Display the generated image
+                        self.image_signals.image_update.emit(output_path)
+                        self.image_signals.status_update.emit(message)
+                    else:
+                        self.image_signals.status_update.emit(message)
+                        
+                else:
+                    self.image_signals.status_update.emit("⚠️ No design data available for prompt generation. Please complete the design process first.")
+                    
+            except Exception as e:
+                self.image_signals.status_update.emit(f"⚠️ Error generating AI visualization: {str(e)}")
+                print(f"Error in AI image generation: {e}")
+            
+        except Exception as e:
+            self.image_signals.status_update.emit(f"Failed to process or display image: {e}")
+            self.image_signals.error_update.emit("Failed to load image.")
+
     def clear_query_results_and_display(self):
         """Clear stored query results, hide buttons, and clear the display"""
         self.clear_query_results()
         self.clear_results_button.setVisible(False)
         self.query_results.clear()
         self.query_results.append("Query results cleared. You can ask a new question.")
+
+    def create_plan_export_tab(self):
+        """Create the Plan Export tab for professional PDF export"""
+        plan_export_widget = QWidget()
+        layout = QVBoxLayout(plan_export_widget)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+
+        # Title
+        title = QLabel("Export Professional Courtyard Plan")
+        title.setStyleSheet("font-size: 24px; font-weight: bold;")
+        layout.addWidget(title)
+
+        # Description
+        description = QLabel(
+            "Generate a high-quality, professional PDF plan of your courtyard design. "
+            "The plan will include a site layout, materials, tree placement, and all design details."
+        )
+        description.setWordWrap(True)
+        description.setStyleSheet("font-size: 16px; margin-bottom: 15px;")
+        layout.addWidget(description)
+
+        # Design summary area
+        self.plan_summary_display = QTextBrowser()
+        self.plan_summary_display.setPlaceholderText("Design summary will appear here once your design is ready.")
+        self.plan_summary_display.setFixedHeight(180)
+        self.plan_summary_display.setStyleSheet("""
+            QTextBrowser {
+                background-color: #f0f0f0;
+                border: 1px solid #E0E0E0;
+                border-radius: 8px;
+                padding: 10px;
+                font-size: 15px;
+            }
+        """)
+        layout.addWidget(self.plan_summary_display)
+
+        # Export button
+        self.plan_export_button = QPushButton("📋 Export Professional Plan (PDF)")
+        self.plan_export_button.setStyleSheet("""
+            QPushButton {
+                background-color: #FF5722;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 10px 25px;
+                font-weight: bold;
+                font-size: 20px;
+            }
+            QPushButton:hover {
+                background-color: #E64A19;
+            }
+            QPushButton:pressed {
+                background-color: #BF360C;
+            }
+        """)
+        self.plan_export_button.clicked.connect(self.export_professional_plan_handler)
+        layout.addWidget(self.plan_export_button)
+
+        # Status display
+        self.plan_export_status = QTextBrowser()
+        self.plan_export_status.setPlaceholderText("Status updates will appear here...")
+        self.plan_export_status.setFixedHeight(100)
+        self.plan_export_status.setStyleSheet("""
+            QTextBrowser {
+                background-color: #f0f0f0;
+                border: 1px solid #E0E0E0;
+                border-radius: 8px;
+                padding: 10px;
+                font-size: 15px;
+            }
+        """)
+        layout.addWidget(self.plan_export_status)
+
+        self.tab_widget.addTab(plan_export_widget, "📋 Plan Export")
+
+    def update_plan_summary(self):
+        """Update the plan summary display in the Plan Export tab."""
+        if hasattr(self, 'design_data') and self.design_data:
+            summary = ["<b>Design Data Summary:</b>"]
+            summary.append(f"<b>Concept:</b> {getattr(self, 'concept', 'N/A')[:120]}...")
+            summary.append(f"<b>Spaces:</b> {self.design_data.get('spaces', {})}")
+            summary.append(f"<b>External Functions:</b> {self.design_data.get('external_functions', {})}")
+            summary.append(f"<b>Attributes:</b> {getattr(self, 'attributes', {})}")
+            if hasattr(self, 'tree_data') and self.tree_data:
+                summary.append(f"<b>Tree Placement:</b> {self.tree_data.get('tree_placement', {})}")
+            self.plan_summary_display.setHtml('<br/>'.join(summary))
+        else:
+            self.plan_summary_display.setText("No design data available yet. Complete the design process to enable plan export.")
+
+    def export_professional_plan_handler(self):
+        """Handler for the Export Professional Plan button in the Plan Export tab."""
+        try:
+            # Check if we have all the necessary data
+            if not hasattr(self, 'design_data') or not self.design_data:
+                raise Exception("No design data available. Please complete the design process first.")
+            if not hasattr(self, 'concept') or not self.concept:
+                raise Exception("No design concept available. Please complete the concept phase first.")
+            if not hasattr(self, 'attributes') or not self.attributes:
+                raise Exception("No attributes data available. Please complete the attributes phase first.")
+            if not hasattr(self, 'tree_data') or not self.tree_data:
+                raise Exception("No tree data available. Please complete the design process first.")
+            # Show status message
+            self.plan_export_status.setText("🔄 Generating professional courtyard plan... This may take a moment.")
+            QApplication.processEvents()
+            # Generate the professional plan
+            plan_path = export_courtyard_plan(
+                design_data=self.design_data,
+                tree_data=self.tree_data,
+                attributes=self.attributes,
+                concept=self.concept
+            )
+            # Show success message with file location
+            self.plan_export_status.setText(
+                f"🎉 Professional courtyard plan generated successfully!\n\n"
+                f"📄 Plan saved to: {plan_path}\n\n"
+                f"The plan includes:\n"
+                f"• Professional site layout with all spaces\n"
+                f"• Materials and specifications\n"
+                f"• Tree placement and water requirements\n"
+                f"• Design concept and spatial analysis\n"
+                f"• Professional legend and notes\n\n"
+                f"Open the PDF to view your complete courtyard design documentation!"
+            )
+        except Exception as e:
+            self.plan_export_status.setText(
+                f"❌ Error generating professional plan: {str(e)}\n\n"
+                f"Please ensure you have completed all design phases (concept, functions, attributes, graph) before exporting."
+            )
+            print(f"Error exporting professional plan: {e}")
 
 def extract_json(body):
     # if body is json then return
