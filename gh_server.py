@@ -290,6 +290,24 @@ def get_query_status():
             "message": f"Error: {str(e)}"
         })
 
+#endpoint for climate analysis
+@app.route('/climate/hoy', methods=['POST'])
+def get_analysis_hour():
+    data = request.get_json()
+    message = data.get("message", "")
+
+    result = extract_hoy_from_message(message, client, completion_model)
+
+    if result["intent"] == "specific":
+        return jsonify({"hoy": result["hoy"], "method": "user-specified"})
+    elif result["intent"] == "worst":
+        # Get ZIP URL (already selected) → read EPW → find hottest HOY
+        zip_url = data.get("zip_url")
+        hoy = extract_hottest_hoy_from_epw(zip_url)
+        return jsonify({"hoy": hoy, "method": "hottest-detected"})
+    else:
+        return jsonify({"error": "Unable to determine a HOY from the message."}), 400
+
 
 @app.route('/query_results', methods=['POST'])
 def set_query_results():
