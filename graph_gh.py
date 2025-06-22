@@ -12,10 +12,7 @@ from PyQt5.QtGui import QPen, QBrush, QFont, QPainter, QColor, QPainterPath
 from PyQt5.QtCore import Qt, QPointF
 from matplotlib import colormaps
 
-# Graph Editor with improved text visibility and cardinal direction positioning
-# - Regular nodes now use black text (Arial Black font) for better visibility
-# - Cardinal directions are positioned further from nodes to avoid overlap
-# - Cardinal directions use larger, bolder text for better visibility
+
 
 class NodeItem(QGraphicsEllipseItem):
     def __init__(self, node_id, x, y, anchor=False, label="", color=QColor("gray"), weight=20):

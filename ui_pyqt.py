@@ -15,13 +15,16 @@ import json
 import threading
 import time
 import base64
-from plan_export import export_courtyard_plan
+from datetime import datetime
+from plan_export import export_courtyard_plan, PlanExportTab
 
 class ImageGenerationSignals(QObject):
     """Signals for safely updating UI from background threads"""
     status_update = pyqtSignal(str)
     image_update = pyqtSignal(str)
     error_update = pyqtSignal(str)
+    plan_image_update = pyqtSignal(str)
+    plan_error_update = pyqtSignal(str)
 
 class FlaskClientChatUI(QMainWindow):
     def __init__(self):
@@ -33,6 +36,8 @@ class FlaskClientChatUI(QMainWindow):
         self.image_signals.status_update.connect(self.update_image_status)
         self.image_signals.image_update.connect(self.update_image_display)
         self.image_signals.error_update.connect(self.update_image_error)
+        self.image_signals.plan_image_update.connect(self.update_plan_image_display)
+        self.image_signals.plan_error_update.connect(self.update_plan_image_error)
         
         # Set window style
         self.setStyleSheet("""
@@ -143,8 +148,8 @@ class FlaskClientChatUI(QMainWindow):
         # Create the image generation tab
         self.create_image_generation_tab()
 
-        # Create the plan export tab
-        self.create_plan_export_tab()
+        # Create the plan export tab using the PlanExportTab class
+        self.plan_export_tab = PlanExportTab(self.tab_widget, self)
 
         # Initialize other properties
         self.phases = {
@@ -247,7 +252,8 @@ class FlaskClientChatUI(QMainWindow):
                 self.geometry_data()
                 self.get_tree_data()
                 # Update plan summary in Plan Export tab
-                self.update_plan_summary()
+                if hasattr(self, 'plan_export_tab'):
+                    self.plan_export_tab.update_plan_summary()
                 
                 # Send geometry data to server with proper headers
                 headers = {
@@ -645,7 +651,8 @@ class FlaskClientChatUI(QMainWindow):
             print(f"Error in tree_data: {e}")
 
         # Update plan summary in Plan Export tab
-        self.update_plan_summary()
+        if hasattr(self, 'plan_export_tab'):
+            self.plan_export_tab.update_plan_summary()
 
     def create_networkx_graph(self, graph_json):
         """
@@ -961,16 +968,16 @@ class FlaskClientChatUI(QMainWindow):
 
         # Description
         description = QLabel(
-            "This tool captures your current Rhino viewport, then uses an AI model "
-            "to generate a conceptual, artistic rendering based on the view and your design brief."
+            "This tool captures both 3D and top-down views of your Rhino model, then uses AI to generate "
+            "artistic renderings based on your design brief. You'll get both perspectives enhanced!"
         )
         description.setWordWrap(True)
         description.setStyleSheet("font-size: 16px; margin-bottom: 15px;")
         layout.addWidget(description)
 
-        # Generate Button
-        self.generate_image_button = QPushButton("📸 Generate Image from Rhino Viewport")
-        self.generate_image_button.setStyleSheet("""
+        # Generate Both Views Button
+        self.generate_both_views_button = QPushButton("📸 Generate Both Views (3D + Plan)")
+        self.generate_both_views_button.setStyleSheet("""
             QPushButton {
                 background-color: #673AB7; /* A deep purple for creativity */
                 color: white;
@@ -978,7 +985,7 @@ class FlaskClientChatUI(QMainWindow):
                 border-radius: 4px;
                 padding: 10px 25px;
                 font-weight: bold;
-                font-size: 22px;
+                font-size: 20px;
             }
             QPushButton:hover {
                 background-color: #512DA8;
@@ -987,8 +994,54 @@ class FlaskClientChatUI(QMainWindow):
                 background-color: #311B92;
             }
         """)
-        self.generate_image_button.clicked.connect(self.handle_generate_image)
-        layout.addWidget(self.generate_image_button)
+        self.generate_both_views_button.clicked.connect(self.handle_generate_both_views)
+        layout.addWidget(self.generate_both_views_button)
+
+        # Individual view buttons
+        view_buttons_container = QWidget()
+        view_buttons_layout = QHBoxLayout(view_buttons_container)
+        view_buttons_layout.setContentsMargins(0, 0, 0, 0)
+        view_buttons_layout.setSpacing(10)
+
+        # 3D View Button
+        self.generate_3d_button = QPushButton("🎭 Generate 3D View")
+        self.generate_3d_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-weight: bold;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+        """)
+        self.generate_3d_button.clicked.connect(self.handle_generate_3d_view)
+        view_buttons_layout.addWidget(self.generate_3d_button)
+
+        # Top-Down View Button
+        self.generate_plan_button = QPushButton("📋 Generate Plan View")
+        self.generate_plan_button.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-weight: bold;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                background-color: #388E3C;
+            }
+        """)
+        self.generate_plan_button.clicked.connect(self.handle_generate_plan_view)
+        view_buttons_layout.addWidget(self.generate_plan_button)
+
+        layout.addWidget(view_buttons_container)
 
         # Status Display
         self.image_gen_status_display = QTextBrowser()
@@ -1005,20 +1058,60 @@ class FlaskClientChatUI(QMainWindow):
         """)
         layout.addWidget(self.image_gen_status_display)
 
-        # Image Display Area
-        self.image_display_label = QLabel("Generated image will appear here.")
-        self.image_display_label.setAlignment(Qt.AlignCenter)
-        self.image_display_label.setMinimumHeight(400)
-        self.image_display_label.setStyleSheet("""
+        # Image Display Area with tabs
+        self.image_tab_widget = QTabWidget()
+        self.image_tab_widget.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid #E0E0E0;
+                background-color: white;
+                border-radius: 8px;
+            }
+            QTabBar::tab {
+                background-color: #F5F5F5;
+                color: #666;
+                padding: 8px 16px;
+                margin-right: 2px;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+                font-size: 14px;
+            }
+            QTabBar::tab:selected {
+                background-color: #2196F3;
+                color: white;
+            }
+        """)
+
+        # 3D View Tab
+        self.image_3d_display_label = QLabel("3D view will appear here.")
+        self.image_3d_display_label.setAlignment(Qt.AlignCenter)
+        self.image_3d_display_label.setMinimumHeight(300)
+        self.image_3d_display_label.setStyleSheet("""
             QLabel {
                 background-color: #e8e8e8;
                 border: 2px dashed #cccccc;
                 border-radius: 8px;
                 color: #888888;
-                font-size: 18px;
+                font-size: 16px;
             }
         """)
-        layout.addWidget(self.image_display_label, 1) # Give it stretch factor
+        self.image_tab_widget.addTab(self.image_3d_display_label, "🎭 3D View")
+
+        # Plan View Tab
+        self.image_plan_display_label = QLabel("Plan view will appear here.")
+        self.image_plan_display_label.setAlignment(Qt.AlignCenter)
+        self.image_plan_display_label.setMinimumHeight(300)
+        self.image_plan_display_label.setStyleSheet("""
+            QLabel {
+                background-color: #e8e8e8;
+                border: 2px dashed #cccccc;
+                border-radius: 8px;
+                color: #888888;
+                font-size: 16px;
+            }
+        """)
+        self.image_tab_widget.addTab(self.image_plan_display_label, "📋 Plan View")
+
+        layout.addWidget(self.image_tab_widget, 1)  # Give it stretch factor
 
         self.tab_widget.addTab(image_gen_widget, "🖼️ Image Generation")
 
@@ -1030,17 +1123,33 @@ class FlaskClientChatUI(QMainWindow):
         """Update the image display (called from main thread)"""
         try:
             pixmap = QPixmap(image_path)
-            self.image_display_label.setPixmap(pixmap.scaled(
-                self.image_display_label.size(),
+            self.image_3d_display_label.setPixmap(pixmap.scaled(
+                self.image_3d_display_label.size(),
                 Qt.KeepAspectRatio,
                 Qt.SmoothTransformation
             ))
         except Exception as e:
-            self.image_display_label.setText(f"Failed to load image: {e}")
+            self.image_3d_display_label.setText(f"Failed to load image: {e}")
+
+    def update_plan_image_display(self, image_path):
+        """Update the plan view image display (called from main thread)"""
+        try:
+            pixmap = QPixmap(image_path)
+            self.image_plan_display_label.setPixmap(pixmap.scaled(
+                self.image_plan_display_label.size(),
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            ))
+        except Exception as e:
+            self.image_plan_display_label.setText(f"Failed to load image: {e}")
 
     def update_image_error(self, error_message):
         """Update the image display with an error (called from main thread)"""
-        self.image_display_label.setText(error_message)
+        self.image_3d_display_label.setText(error_message)
+
+    def update_plan_image_error(self, error_message):
+        """Update the plan view image display with an error (called from main thread)"""
+        self.image_plan_display_label.setText(error_message)
 
     def update_advisor_tip(self):
         """Fetches and displays a proactive design tip from the AI advisor."""
@@ -1470,93 +1579,237 @@ class FlaskClientChatUI(QMainWindow):
             delattr(self, 'current_query_results')
         self.send_query_to_gh_button.setVisible(False)
 
-    def handle_generate_image(self):
-        """Triggers the Rhino screenshot and then sends to the image generation backend."""
-        self.image_signals.status_update.emit("Requesting a screenshot from Rhino... Please wait.")
-        self.image_signals.image_update.emit("")  # Clear previous image
-        QApplication.processEvents() # Update the UI
+    def handle_generate_both_views(self):
+        """Generate both 3D and plan views with AI enhancement."""
+        self.image_signals.status_update.emit("🔄 Capturing both 3D and plan views from Rhino... Please wait.")
+        QApplication.processEvents()
 
-        # Define a temporary path for the screenshot
+        # Define paths for both screenshots
         temp_dir = os.path.join(os.path.expanduser("~"), "temp_copilot_images")
         if not os.path.exists(temp_dir):
             os.makedirs(temp_dir)
-        screenshot_path = os.path.join(temp_dir, "rhino_viewport.png")
+        screenshot_3d_path = os.path.join(temp_dir, "rhino_3d_view.png")
+        screenshot_plan_path = os.path.join(temp_dir, "rhino_plan_view.png")
 
-        # The function that will run in a separate thread to avoid freezing the UI
         def _task():
             try:
-                # 1. Post the command to the server
-                command_payload = {
+                # 1. Capture 3D view
+                self.image_signals.status_update.emit("📸 Capturing 3D view...")
+                command_3d = {
                     "command": "take_screenshot",
-                    "payload": {"path": screenshot_path}
+                    "payload": {"path": screenshot_3d_path}
                 }
-                requests.post("http://localhost:5000/command", json=command_payload)
+                requests.post("http://localhost:5000/command", json=command_3d)
 
-                # 2. Poll for completion status
-                for _ in range(20): # Poll for up to 20 seconds
+                # Wait for 3D screenshot completion
+                for _ in range(20):
                     status_response = requests.get("http://localhost:5000/command_status")
                     if status_response.status_code == 200:
                         status_data = status_response.json()
                         if status_data.get("status") == "complete":
-                            print("Screenshot command complete.")
-                            saved_path = status_data.get("result", {}).get("path")
-                            
-                            if saved_path and os.path.exists(saved_path):
-                                self.send_image_to_backend(saved_path)
-                            else:
-                                self.image_signals.status_update.emit(f"Error: Screenshot file not found at path: {saved_path}")
-                                self.image_signals.error_update.emit("Image Generation Failed")
-                            return
+                            break
                     time.sleep(1)
+
+                # 2. Capture plan view
+                self.image_signals.status_update.emit("📋 Capturing top-down plan view...")
+                command_plan = {
+                    "command": "take_top_down_screenshot",
+                    "payload": {"path": screenshot_plan_path}
+                }
+                requests.post("http://localhost:5000/command", json=command_plan)
+
+                # Wait for plan screenshot completion
+                for _ in range(20):
+                    status_response = requests.get("http://localhost:5000/command_status")
+                    if status_response.status_code == 200:
+                        status_data = status_response.json()
+                        if status_data.get("status") == "complete":
+                            break
+                    time.sleep(1)
+
+                # 3. Process both images with AI
+                self.image_signals.status_update.emit("🎨 Processing 3D view with AI...")
+                self.process_image_with_ai(screenshot_3d_path, "3d", "3D View")
                 
-                self.image_signals.status_update.emit("Error: Timed out waiting for Rhino to take a screenshot.")
-                self.image_signals.error_update.emit("Image Generation Failed")
+                self.image_signals.status_update.emit("🎨 Processing plan view with AI...")
+                self.process_image_with_ai(screenshot_plan_path, "plan", "Plan View")
+
+                self.image_signals.status_update.emit("✅ Both views generated successfully! Check the tabs above.")
 
             except Exception as e:
-                self.image_signals.status_update.emit(f"An error occurred during image generation: {e}")
-                self.image_signals.error_update.emit("Image Generation Failed")
+                self.image_signals.status_update.emit(f"❌ Error generating views: {str(e)}")
+                print(f"Error in generate both views: {e}")
 
         threading.Thread(target=_task).start()
 
-    def send_image_to_backend(self, image_path):
-        """Reads an image, encodes it, displays it, and sends it to the image generation backend."""
-        try:
-            # Display the captured image using signals
-            self.image_signals.image_update.emit(image_path)
-            self.image_signals.status_update.emit("Screenshot captured! Generating AI-enhanced visualization...")
-            
-            # Generate a prompt using the existing LLM function
+    def handle_generate_3d_view(self):
+        """Generate only the 3D view with AI enhancement."""
+        self.image_signals.status_update.emit("📸 Capturing 3D view from Rhino... Please wait.")
+        QApplication.processEvents()
+
+        # Define path for 3D screenshot
+        temp_dir = os.path.join(os.path.expanduser("~"), "temp_copilot_images")
+        if not os.path.exists(temp_dir):
+            os.makedirs(temp_dir)
+        screenshot_path = os.path.join(temp_dir, "rhino_3d_view.png")
+
+        def _task():
             try:
-                # Get the design data for prompt generation
+                # Capture 3D view
+                command = {
+                    "command": "take_screenshot",
+                    "payload": {"path": screenshot_path}
+                }
+                requests.post("http://localhost:5000/command", json=command)
+
+                # Wait for completion
+                for _ in range(20):
+                    status_response = requests.get("http://localhost:5000/command_status")
+                    if status_response.status_code == 200:
+                        status_data = status_response.json()
+                        if status_data.get("status") == "complete":
+                            break
+                    time.sleep(1)
+
+                # Process with AI
+                self.image_signals.status_update.emit("🎨 Processing 3D view with AI...")
+                self.process_image_with_ai(screenshot_path, "3d", "3D View")
+
+            except Exception as e:
+                self.image_signals.status_update.emit(f"❌ Error generating 3D view: {str(e)}")
+                print(f"Error in generate 3D view: {e}")
+
+        threading.Thread(target=_task).start()
+
+    def handle_generate_plan_view(self):
+        """Generate only the plan view with AI enhancement."""
+        self.image_signals.status_update.emit("📋 Capturing top-down plan view from Rhino... Please wait.")
+        QApplication.processEvents()
+
+        # Define path for plan screenshot
+        temp_dir = os.path.join(os.path.expanduser("~"), "temp_copilot_images")
+        if not os.path.exists(temp_dir):
+            os.makedirs(temp_dir)
+        screenshot_path = os.path.join(temp_dir, "rhino_plan_view.png")
+
+        def _task():
+            try:
+                # Capture plan view
+                command = {
+                    "command": "take_top_down_screenshot",
+                    "payload": {"path": screenshot_path}
+                }
+                print(f"DEBUG: Sending plan screenshot command: {command}")
+                response = requests.post("http://localhost:5000/command", json=command)
+                print(f"DEBUG: Command response status: {response.status_code}")
+                
+                if response.status_code != 200:
+                    print(f"DEBUG: Command failed with status {response.status_code}")
+                    self.image_signals.status_update.emit(f"❌ Failed to send command to Rhino (status {response.status_code})")
+                    return
+
+                # Wait for completion
+                for attempt in range(20):
+                    print(f"DEBUG: Checking status attempt {attempt + 1}")
+                    status_response = requests.get("http://localhost:5000/command_status")
+                    if status_response.status_code == 200:
+                        status_data = status_response.json()
+                        print(f"DEBUG: Status data: {status_data}")
+                        if status_data.get("status") == "complete":
+                            print("DEBUG: Plan screenshot completed")
+                            break
+                        elif status_data.get("status") == "error":
+                            print(f"DEBUG: Plan screenshot failed: {status_data.get('error')}")
+                            self.image_signals.status_update.emit(f"❌ Plan screenshot failed: {status_data.get('error')}")
+                            return
+                    time.sleep(1)
+                else:
+                    print("DEBUG: Plan screenshot timed out")
+                    self.image_signals.status_update.emit("❌ Plan screenshot timed out")
+
+                # Check if file exists
+                print(f"DEBUG: Checking if file exists: {screenshot_path}")
+                if os.path.exists(screenshot_path):
+                    file_size = os.path.getsize(screenshot_path)
+                    print(f"DEBUG: File exists, size: {file_size} bytes")
+                    if file_size > 0:
+                        # Process with AI
+                        self.image_signals.status_update.emit("🎨 Processing plan view with AI...")
+                        self.process_image_with_ai(screenshot_path, "plan", "Plan View")
+                    else:
+                        print("DEBUG: File exists but is empty")
+                        self.image_signals.status_update.emit("⚠️ Screenshot file is empty. Please try again.")
+                else:
+                    print("DEBUG: File does not exist")
+                    self.image_signals.status_update.emit("⚠️ Screenshot file not found. Please check if Grasshopper script is running.")
+
+            except Exception as e:
+                print(f"DEBUG: Exception in plan view generation: {e}")
+                self.image_signals.status_update.emit(f"❌ Error generating plan view: {str(e)}")
+                print(f"Error in generate plan view: {e}")
+
+        threading.Thread(target=_task).start()
+
+    def process_image_with_ai(self, image_path, view_type, display_name):
+        """Process an image with AI enhancement based on view type."""
+        try:
+            # Check if file exists and has content
+            if not image_path or not os.path.exists(image_path):
+                self.image_signals.status_update.emit(f"⚠️ Screenshot file not found for {display_name}. Please try again.")
+                return
+            
+            if os.path.getsize(image_path) == 0:
+                self.image_signals.status_update.emit(f"⚠️ Screenshot file is empty for {display_name}. Please try again.")
+                return
+
+            # Display the captured image
+            if view_type == "3d":
+                self.image_signals.image_update.emit(image_path)
+            else:  # plan view
+                self.image_signals.plan_image_update.emit(image_path)
+
+            # Generate appropriate prompt based on view type
+            try:
                 if hasattr(self, 'design_data') and self.design_data:
-                    # Extract the data needed for prompt generation
                     concept = getattr(self, 'concept', 'A beautiful courtyard design')
                     attributes = getattr(self, 'attributes', {})
                     
-                    # Use the existing generate_image_prompt function from llm_calls
                     from llm_calls import generate_image_prompt
                     
-                    # Get the other required data (you may need to adjust these based on what's available)
                     connections = self.design_data.get("links", {})
                     targets = self.design_data.get("positions", {})
                     spaces = self.design_data.get("spaces", {})
                     pwr = getattr(self, 'tree_data', {}).get("PWR", {})
                     tree_placement = getattr(self, 'tree_data', {}).get("tree_placement", {})
                     
-                    # Generate the prompt
-                    generated_prompt = generate_image_prompt(concept, attributes, connections, targets, spaces, pwr, tree_placement)
+                    # Generate base prompt
+                    base_prompt = generate_image_prompt(concept, attributes, connections, targets, spaces, pwr, tree_placement)
                     
-                    self.image_signals.status_update.emit("Prompt generated! Sending to AI image generation service...")
+                    # Enhance prompt based on view type
+                    if view_type == "3d":
+                        enhanced_prompt = f"{base_prompt}, architectural 3D visualization, dramatic lighting, photorealistic rendering, cinematic composition"
+                    else:  # plan view
+                        enhanced_prompt = f"{base_prompt}, architectural plan view, technical drawing style, clean lines, professional layout, top-down perspective"
                     
-                    # Call the image generation function from image_gen.py
+                    self.image_signals.status_update.emit(f"🎨 Generating AI-enhanced {display_name}...")
+                    
+                    # Call the image generation function
                     from image_gen import generate_ai_enhanced_image
                     
-                    success, output_path, message = generate_ai_enhanced_image(image_path, generated_prompt)
+                    # Generate unique output filename
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    output_filename = f"ai_enhanced_{view_type}_{timestamp}.png"
+                    
+                    success, output_path, message = generate_ai_enhanced_image(image_path, enhanced_prompt, output_filename)
                     
                     if success:
-                        # Display the generated image
-                        self.image_signals.image_update.emit(output_path)
-                        self.image_signals.status_update.emit(message)
+                        # Display the generated image in the appropriate tab
+                        if view_type == "3d":
+                            self.image_signals.image_update.emit(output_path)
+                        else:  # plan view
+                            self.image_signals.plan_image_update.emit(output_path)
+                        
+                        self.image_signals.status_update.emit(f"✅ {display_name} generated successfully!")
                     else:
                         self.image_signals.status_update.emit(message)
                         
@@ -1564,12 +1817,15 @@ class FlaskClientChatUI(QMainWindow):
                     self.image_signals.status_update.emit("⚠️ No design data available for prompt generation. Please complete the design process first.")
                     
             except Exception as e:
-                self.image_signals.status_update.emit(f"⚠️ Error generating AI visualization: {str(e)}")
-                print(f"Error in AI image generation: {e}")
+                self.image_signals.status_update.emit(f"⚠️ Error generating AI visualization for {display_name}: {str(e)}")
+                print(f"Error in AI image generation for {view_type}: {e}")
             
         except Exception as e:
-            self.image_signals.status_update.emit(f"Failed to process or display image: {e}")
-            self.image_signals.error_update.emit("Failed to load image.")
+            self.image_signals.status_update.emit(f"Failed to process {display_name}: {e}")
+            if view_type == "3d":
+                self.image_signals.error_update.emit(f"Failed to load {display_name}.")
+            else:
+                self.image_signals.plan_error_update.emit(f"Failed to load {display_name}.")
 
     def clear_query_results_and_display(self):
         """Clear stored query results, hide buttons, and clear the display"""
@@ -1577,136 +1833,6 @@ class FlaskClientChatUI(QMainWindow):
         self.clear_results_button.setVisible(False)
         self.query_results.clear()
         self.query_results.append("Query results cleared. You can ask a new question.")
-
-    def create_plan_export_tab(self):
-        """Create the Plan Export tab for professional PDF export"""
-        plan_export_widget = QWidget()
-        layout = QVBoxLayout(plan_export_widget)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(15)
-
-        # Title
-        title = QLabel("Export Professional Courtyard Plan")
-        title.setStyleSheet("font-size: 24px; font-weight: bold;")
-        layout.addWidget(title)
-
-        # Description
-        description = QLabel(
-            "Generate a high-quality, professional PDF plan of your courtyard design. "
-            "The plan will include a site layout, materials, tree placement, and all design details."
-        )
-        description.setWordWrap(True)
-        description.setStyleSheet("font-size: 16px; margin-bottom: 15px;")
-        layout.addWidget(description)
-
-        # Design summary area
-        self.plan_summary_display = QTextBrowser()
-        self.plan_summary_display.setPlaceholderText("Design summary will appear here once your design is ready.")
-        self.plan_summary_display.setFixedHeight(180)
-        self.plan_summary_display.setStyleSheet("""
-            QTextBrowser {
-                background-color: #f0f0f0;
-                border: 1px solid #E0E0E0;
-                border-radius: 8px;
-                padding: 10px;
-                font-size: 15px;
-            }
-        """)
-        layout.addWidget(self.plan_summary_display)
-
-        # Export button
-        self.plan_export_button = QPushButton("📋 Export Professional Plan (PDF)")
-        self.plan_export_button.setStyleSheet("""
-            QPushButton {
-                background-color: #FF5722;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 10px 25px;
-                font-weight: bold;
-                font-size: 20px;
-            }
-            QPushButton:hover {
-                background-color: #E64A19;
-            }
-            QPushButton:pressed {
-                background-color: #BF360C;
-            }
-        """)
-        self.plan_export_button.clicked.connect(self.export_professional_plan_handler)
-        layout.addWidget(self.plan_export_button)
-
-        # Status display
-        self.plan_export_status = QTextBrowser()
-        self.plan_export_status.setPlaceholderText("Status updates will appear here...")
-        self.plan_export_status.setFixedHeight(100)
-        self.plan_export_status.setStyleSheet("""
-            QTextBrowser {
-                background-color: #f0f0f0;
-                border: 1px solid #E0E0E0;
-                border-radius: 8px;
-                padding: 10px;
-                font-size: 15px;
-            }
-        """)
-        layout.addWidget(self.plan_export_status)
-
-        self.tab_widget.addTab(plan_export_widget, "📋 Plan Export")
-
-    def update_plan_summary(self):
-        """Update the plan summary display in the Plan Export tab."""
-        if hasattr(self, 'design_data') and self.design_data:
-            summary = ["<b>Design Data Summary:</b>"]
-            summary.append(f"<b>Concept:</b> {getattr(self, 'concept', 'N/A')[:120]}...")
-            summary.append(f"<b>Spaces:</b> {self.design_data.get('spaces', {})}")
-            summary.append(f"<b>External Functions:</b> {self.design_data.get('external_functions', {})}")
-            summary.append(f"<b>Attributes:</b> {getattr(self, 'attributes', {})}")
-            if hasattr(self, 'tree_data') and self.tree_data:
-                summary.append(f"<b>Tree Placement:</b> {self.tree_data.get('tree_placement', {})}")
-            self.plan_summary_display.setHtml('<br/>'.join(summary))
-        else:
-            self.plan_summary_display.setText("No design data available yet. Complete the design process to enable plan export.")
-
-    def export_professional_plan_handler(self):
-        """Handler for the Export Professional Plan button in the Plan Export tab."""
-        try:
-            # Check if we have all the necessary data
-            if not hasattr(self, 'design_data') or not self.design_data:
-                raise Exception("No design data available. Please complete the design process first.")
-            if not hasattr(self, 'concept') or not self.concept:
-                raise Exception("No design concept available. Please complete the concept phase first.")
-            if not hasattr(self, 'attributes') or not self.attributes:
-                raise Exception("No attributes data available. Please complete the attributes phase first.")
-            if not hasattr(self, 'tree_data') or not self.tree_data:
-                raise Exception("No tree data available. Please complete the design process first.")
-            # Show status message
-            self.plan_export_status.setText("🔄 Generating professional courtyard plan... This may take a moment.")
-            QApplication.processEvents()
-            # Generate the professional plan
-            plan_path = export_courtyard_plan(
-                design_data=self.design_data,
-                tree_data=self.tree_data,
-                attributes=self.attributes,
-                concept=self.concept
-            )
-            # Show success message with file location
-            self.plan_export_status.setText(
-                f"🎉 Professional courtyard plan generated successfully!\n\n"
-                f"📄 Plan saved to: {plan_path}\n\n"
-                f"The plan includes:\n"
-                f"• Professional site layout with all spaces\n"
-                f"• Materials and specifications\n"
-                f"• Tree placement and water requirements\n"
-                f"• Design concept and spatial analysis\n"
-                f"• Professional legend and notes\n\n"
-                f"Open the PDF to view your complete courtyard design documentation!"
-            )
-        except Exception as e:
-            self.plan_export_status.setText(
-                f"❌ Error generating professional plan: {str(e)}\n\n"
-                f"Please ensure you have completed all design phases (concept, functions, attributes, graph) before exporting."
-            )
-            print(f"Error exporting professional plan: {e}")
 
 def extract_json(body):
     # if body is json then return

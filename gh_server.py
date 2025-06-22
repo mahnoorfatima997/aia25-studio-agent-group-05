@@ -31,7 +31,6 @@ query_results = None  # Global variable to store the latest query results
 
 # --- Global In-Memory Storage ---
 # Simple dictionary to hold the latest data received from Grasshopper
-# In a production scenario, you might replace this with a database or a more robust solution
 latest_data = {
     "plot_area": {"area": "400", "width": "20", "length": "20"},
     "external_functions": {},
