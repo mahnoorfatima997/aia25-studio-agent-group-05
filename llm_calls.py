@@ -1477,4 +1477,59 @@ The user has just added specific attributes to their courtyard design. Your job 
         
         return f"Perfect! I've added these wonderful details to your design: {', '.join(attributes_list)}. These attributes will really bring your courtyard to life. Now let's visualize how everything will work together!"
 
+def generate_plan_view_prompt(concept, design_data, tree_data, attributes):
+    """
+    Generates a concise text prompt for plan view generation in the "Vertical Landscapes" format.
+    
+    Args:
+        concept (str): The design concept text
+        design_data (dict): Complete design data with positions, spaces, links, etc.
+        tree_data (dict): Tree placement and water requirements
+        attributes (dict): Material and specification data
+    
+    Returns:
+        str: A concise 3-sentence prompt for text-to-image plan view generation
+    """
+    
+    # Extract key information from design data
+    spaces = design_data.get('spaces', {})
+    external_functions = design_data.get('external_functions', {})
+    tree_placement = tree_data.get('tree_placement', {}) if tree_data else {}
+    
+    # Build functional zones description
+    zone_descriptions = []
+    for zone_name in spaces.keys():
+        if zone_name == 'play':
+            zone_descriptions.append("social play area")
+        elif zone_name == 'rest':
+            zone_descriptions.append("quiet rest zone")
+        elif zone_name == 'pond':
+            zone_descriptions.append("water feature")
+        elif zone_name == 'flower':
+            zone_descriptions.append("flower garden")
+        elif zone_name == 'tree':
+            zone_descriptions.append("tree canopy")
+    
+    # Build external functions description
+    ext_functions = list(external_functions.keys()) if external_functions else []
+    
+    # Build materials description
+    material_list = []
+    if attributes:
+        for key, value in attributes.items():
+            if 'material' in key.lower() or 'stone' in key.lower() or 'wood' in key.lower() or 'brick' in key.lower():
+                material_list.append(value)
+    
+    # Create the 3-sentence prompt in Vertical Landscapes format
+    sentence1 = f"CRTYRD, Vertical Landscapes - Minimalist art style; A captivating courtyard design plan showcasing {concept} with functional zones including {', '.join(zone_descriptions) if zone_descriptions else 'diverse activity areas'} arranged in a harmonious spatial composition."
+    
+    sentence2 = f"CRTYRD, The minimalist sketch style utilizes clean pencil lines on white paper to depict {', '.join(ext_functions) if ext_functions else 'architectural elements'} and circulation paths connecting each zone with simple geometric forms and clear boundaries."
+    
+    sentence3 = f"CRTYRD, The architectural plan view emphasizes the spatial hierarchy through uncluttered layout, clean outlines without shading, and {', '.join(material_list) if material_list else 'natural materials'} that create a serene outdoor environment perfect for contemplation and social interaction."
+    
+    # Combine the three sentences
+    final_prompt = f"{sentence1} {sentence2} {sentence3}"
+    
+    return final_prompt
+
 

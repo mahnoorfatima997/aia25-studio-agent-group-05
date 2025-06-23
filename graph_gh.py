@@ -27,7 +27,14 @@ class NodeItem(QGraphicsEllipseItem):
         self.resizing = False # Restore the resizing flag
         self.setBrush(QBrush(color))
         self.setPen(QPen(Qt.black, 2))
-        self.setFlag(QGraphicsItem.ItemIsMovable)
+        
+        # Only allow movement if not an anchor
+        if not anchor:
+            self.setFlag(QGraphicsItem.ItemIsMovable)
+        else:
+            # Anchor nodes cannot be moved
+            self.setFlag(QGraphicsItem.ItemIsMovable, False)
+            
         self.setFlag(QGraphicsItem.ItemSendsGeometryChanges)
         self.setAcceptHoverEvents(True)
 
@@ -61,12 +68,16 @@ class NodeItem(QGraphicsEllipseItem):
 
     def hoverMoveEvent(self, event):
         if self.anchor:
-            self.setToolTip(f"ID: {self.node_id} (Anchor)")
+            self.setToolTip(f"ID: {self.node_id} (Anchor - Fixed Position)")
         else:
             self.setToolTip(f"ID: {self.node_id}\nWeight: {self.weight}")
         super().hoverMoveEvent(event)
 
     def mousePressEvent(self, event):
+        # Anchor nodes cannot be moved or resized
+        if self.anchor:
+            return
+            
         # Position is relative to the item's center (0,0)
         dist_from_center = (event.pos().x()**2 + event.pos().y()**2)**0.5
         radius = self.rect().width() / 2
@@ -78,7 +89,11 @@ class NodeItem(QGraphicsEllipseItem):
             super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        if self.resizing and not self.anchor:
+        # Anchor nodes cannot be moved or resized
+        if self.anchor:
+            return
+            
+        if self.resizing:
             new_radius = max(10, (event.pos().x()**2 + event.pos().y()**2)**0.5)
             self.weight = new_radius / 5
             self.setRect(-new_radius, -new_radius, 2 * new_radius, 2 * new_radius)
@@ -89,10 +104,18 @@ class NodeItem(QGraphicsEllipseItem):
             self.resolve_collisions()
 
     def mouseReleaseEvent(self, event):
+        # Anchor nodes cannot be moved or resized
+        if self.anchor:
+            return
+            
         self.resizing = False
         super().mouseReleaseEvent(event)
 
     def resolve_collisions(self):
+        # Anchor nodes don't participate in collision resolution
+        if self.anchor:
+            return
+            
         for item in self.scene().items():
             if isinstance(item, NodeItem) and item != self:
                 dx = self.scenePos().x() - item.scenePos().x()
@@ -108,6 +131,10 @@ class NodeItem(QGraphicsEllipseItem):
                         item.moveBy(-nx * overlap / 2, -ny * overlap / 2)
 
     def itemChange(self, change, value):
+        # Anchor nodes cannot be moved
+        if self.anchor and change == QGraphicsItem.ItemPositionChange:
+            return self.scenePos()  # Return current position, preventing movement
+            
         if change == QGraphicsItem.ItemPositionChange and self.scene():
             # Get the new position
             new_pos = value
@@ -116,6 +143,18 @@ class NodeItem(QGraphicsEllipseItem):
             if isinstance(editor, GraphEditor):
                 # Transform to grid coordinates and clamp
                 grid_x, grid_y = editor.transform_to_grid_coords(new_pos.x(), new_pos.y())
+                
+                # Constrain to boundary box if available
+                if editor.boundary_box_data:
+                    min_x = editor.boundary_box_data.get("min_x", editor.X_MIN)
+                    max_x = editor.boundary_box_data.get("max_x", editor.X_MAX)
+                    min_y = editor.boundary_box_data.get("min_y", editor.Y_MIN)
+                    max_y = editor.boundary_box_data.get("max_y", editor.Y_MAX)
+                    
+                    # Clamp coordinates to boundary box
+                    grid_x = max(min_x, min(max_x, grid_x))
+                    grid_y = max(min_y, min(max_y, grid_y))
+                
                 # Transform back to scene coordinates
                 scene_x, scene_y = editor.transform_to_scene_coords(grid_x, grid_y)
                 # Return the clamped scene position
@@ -182,6 +221,11 @@ class GraphEditor(QGraphicsView):
         self.edges = []
         self.edge_pairs = set()
         self.selected_node = None
+        
+        # Store boundary box data for persistence
+        self.boundary_box_data = None
+        self.boundary_rect_item = None
+        self.boundary_label_item = None
 
         # Enhanced color palette
         self.color_palette = [
@@ -280,6 +324,11 @@ class GraphEditor(QGraphicsView):
         # Add cardinal direction indicators
         self.add_cardinal_directions()
 
+        # Store boundary box data for persistence
+        if "boundary_box" in data and data["boundary_box"]:
+            self.boundary_box_data = data["boundary_box"]
+            self.add_boundary_box(self.boundary_box_data)
+
         # Create nodes
         for i, node_data in enumerate(data["nodes"]):
             node_id = node_data["id"]
@@ -306,6 +355,58 @@ class GraphEditor(QGraphicsView):
             target = link["target"]
             print(f"Creating edge: {source} -> {target}")
             self.add_edge(source, target)
+
+    def add_boundary_box(self, boundary_data):
+        """Add a rectangular boundary box to the graph visualization"""
+        try:
+            # Get boundary coordinates
+            min_x = boundary_data.get("min_x", 0)
+            max_x = boundary_data.get("max_x", 100)
+            min_y = boundary_data.get("min_y", 0)
+            max_y = boundary_data.get("max_y", 100)
+            
+            # Transform to scene coordinates
+            scene_min_x, scene_min_y = self.transform_to_scene_coords(min_x, min_y)
+            scene_max_x, scene_max_y = self.transform_to_scene_coords(max_x, max_y)
+            
+            # Calculate rectangle dimensions
+            rect_width = scene_max_x - scene_min_x
+            rect_height = scene_max_y - scene_min_y
+            
+            # Create boundary box rectangle
+            self.boundary_rect_item = QGraphicsRectItem(scene_min_x, scene_min_y, rect_width, rect_height)
+            
+            # Style the boundary box
+            boundary_pen = QPen(QColor("#2C3E50"), 3)  # Dark blue, thick line
+            boundary_pen.setStyle(Qt.DashLine)  # Dashed line
+            self.boundary_rect_item.setPen(boundary_pen)
+            self.boundary_rect_item.setBrush(QBrush(Qt.transparent))  # No fill
+            
+            # Set lower z-value so it appears behind nodes
+            self.boundary_rect_item.setZValue(-1)
+            
+            # Add to scene
+            self.scene().addItem(self.boundary_rect_item)
+            
+            # Add boundary label
+            center_x = (scene_min_x + scene_max_x) / 2
+            center_y = (scene_min_y + scene_max_y) / 2
+            
+            self.boundary_label_item = QGraphicsTextItem("COURTYARD BOUNDARY")
+            self.boundary_label_item.setFont(QFont("Arial", 12, QFont.Bold))
+            self.boundary_label_item.setDefaultTextColor(QColor("#2C3E50"))
+            
+            # Center the label
+            label_rect = self.boundary_label_item.boundingRect()
+            self.boundary_label_item.setPos(center_x - label_rect.width() / 2, center_y - label_rect.height() / 2)
+            self.boundary_label_item.setZValue(0)  # Above boundary box but below nodes
+            
+            self.scene().addItem(self.boundary_label_item)
+            
+            print(f"Added boundary box: ({min_x}, {min_y}) to ({max_x}, {max_y})")
+            
+        except Exception as e:
+            print(f"Error adding boundary box: {e}")
 
     def add_edge(self, id1, id2):
         if (id1, id2) in self.edge_pairs or (id2, id1) in self.edge_pairs:
@@ -353,6 +454,11 @@ class GraphEditor(QGraphicsView):
 
     def mouseMoveEvent(self, event):
         super().mouseMoveEvent(event)
+        
+        # Restore boundary box if it was accidentally cleared
+        self.restore_boundary_box()
+        
+        # Update edge positions
         for edge in self.edges:
             edge.update_position()
 
@@ -387,6 +493,11 @@ class GraphEditor(QGraphicsView):
                 json.dump(graph_data, f, indent=4)
             print(f"Graph saved to {file_path}")
 
+    def restore_boundary_box(self):
+        """Restore the boundary box if it was cleared"""
+        if self.boundary_box_data and not self.boundary_rect_item:
+            self.add_boundary_box(self.boundary_box_data)
+
     def get_graph_data(self):
         """Constructs a JSON-serializable dictionary from the current graph state."""
         nodes_data = []
@@ -411,13 +522,19 @@ class GraphEditor(QGraphicsView):
                 "target": edge.node2.node_id
             })
 
-        return {
+        graph_data = {
             "directed": False,
             "multigraph": False,
             "graph": {},
             "nodes": nodes_data, 
             "links": links_data
         }
+        
+        # Include boundary box data if available
+        if self.boundary_box_data:
+            graph_data["boundary_box"] = self.boundary_box_data
+            
+        return graph_data
 
 
 class MainWindow(QMainWindow):

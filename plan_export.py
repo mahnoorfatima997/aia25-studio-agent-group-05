@@ -287,28 +287,32 @@ class ProfessionalPlanExporter:
         doc = SimpleDocTemplate(
             output_path,
             pagesize=landscape(A3),
-            rightMargin=20*mm,
-            leftMargin=20*mm,
-            topMargin=20*mm,
-            bottomMargin=20*mm
+            rightMargin=15*mm,
+            leftMargin=15*mm,
+            topMargin=15*mm,
+            bottomMargin=15*mm
         )
         
-        # Build the plan content
+        # Build the plan content - TEXT FIRST, THEN PLAN
         story = []
         
         # 1. Title Page
         story.extend(self._create_title_page(concept))
         story.append(PageBreak())
         
-        # 2. Site Plan
-        story.extend(self._create_site_plan(design_data, tree_data))
+        # 2. Design Documentation & Analysis (TEXT CONTENT FIRST)
+        story.extend(self._create_design_documentation_page(design_data, concept, tree_data, attributes))
         story.append(PageBreak())
         
-        # 3. Specifications
+        # 3. Specifications (TEXT CONTENT)
         story.extend(self._create_specifications_page(attributes, tree_data))
         story.append(PageBreak())
         
-        # 4. Details and Notes
+        # 4. Site Plan (VISUAL CONTENT LAST)
+        story.extend(self._create_site_plan(design_data, tree_data))
+        story.append(PageBreak())
+        
+        # 5. Details and Notes (TEXT CONTENT)
         story.extend(self._create_details_page(design_data, concept))
         
         # Build the PDF
@@ -370,16 +374,16 @@ class ProfessionalPlanExporter:
         title_style = ParagraphStyle(
             'SiteTitle',
             parent=getSampleStyleSheet()['Heading1'],
-            fontSize=24,
-            spaceAfter=20,
+            fontSize=28,
+            spaceAfter=15,
             alignment=TA_CENTER
         )
         elements.append(Paragraph("SITE PLAN", title_style))
         
-        # Create the plan drawing
+        # Create the plan drawing - BIGGER AND WITHOUT BOUNDARY BOX
         plan_drawing = self._create_plan_drawing(design_data, tree_data)
         elements.append(plan_drawing)
-        elements.append(Spacer(1, 20))
+        elements.append(Spacer(1, 15))
         
         # Add legend
         elements.extend(self._create_legend())
@@ -387,7 +391,7 @@ class ProfessionalPlanExporter:
         return elements
     
     def _create_plan_drawing(self, design_data, tree_data):
-        """Create the main plan drawing"""
+        """Create the main plan drawing - BIGGER AND WITHOUT BOUNDARY BOX"""
         # Validate and parse design_data if it's a string
         if isinstance(design_data, str):
             try:
@@ -443,6 +447,7 @@ class ProfessionalPlanExporter:
         positions = design_data.get('pos', {})
         spaces = design_data.get('spaces', [])
         external_functions = design_data.get('external_functions', {})
+        external_anchors = design_data.get('external_anchors', {})
         
         # Calculate bounds
         all_coords = []
@@ -457,27 +462,34 @@ class ProfessionalPlanExporter:
             min_x, max_x = min(all_coords[::2]), max(all_coords[::2])
             min_y, max_y = min(all_coords[1::2]), max(all_coords[1::2])
         
-        # Add padding
-        padding = 20
+        # Add padding for better visualization
+        padding = 30
         min_x -= padding
         max_x += padding
         min_y -= padding
         max_y += padding
         
-        # Calculate scale
-        scale = 2.0
+        # Calculate scale - MAKE IT BIGGER
+        scale = 4.0  # Increased from 2.0 to 4.0 for bigger plan
         
-        # Create drawing
-        drawing = Drawing(max_x - min_x, max_y - min_y)
+        # Create drawing - MAKE IT MUCH BIGGER
+        drawing_width = (max_x - min_x) * scale
+        drawing_height = (max_y - min_y) * scale
+        
+        # Ensure minimum size for better visibility
+        drawing_width = max(drawing_width, 600)
+        drawing_height = max(drawing_height, 400)
+        
+        drawing = Drawing(drawing_width, drawing_height)
         
         # Draw grid
         self._draw_grid(drawing, min_x, max_x, min_y, max_y, scale)
         
-        # Draw spaces
+        # Draw courtyard spaces (inside boundary)
         self._draw_spaces(drawing, positions, spaces, min_x, min_y, max_y, scale)
         
-        # Draw external functions
-        self._draw_external_functions(drawing, positions, external_functions, min_x, min_y, max_y, scale)
+        # Draw external functions (at corners)
+        self._draw_external_functions(drawing, positions, external_functions, min_x, min_y, max_y, scale, external_anchors)
         
         # Draw trees
         tree_placement = tree_data.get('tree_placement', {}) if tree_data else {}
@@ -502,7 +514,7 @@ class ProfessionalPlanExporter:
                            strokeColor=self.colors['grid'], strokeWidth=0.5))
     
     def _draw_spaces(self, drawing, positions, spaces, min_x, min_y, max_y, scale):
-        """Draw courtyard spaces with appropriate symbols"""
+        """Draw courtyard spaces with appropriate symbols - BIGGER AND MORE VISIBLE"""
         space_symbols = {
             'play': 'circle',
             'rest': 'rectangle',
@@ -517,57 +529,78 @@ class ProfessionalPlanExporter:
                 x_scaled = (x - min_x) * scale
                 y_scaled = (max_y - min_y) * scale - (y - min_y) * scale
                 
-                # Draw space symbol
+                # Draw space symbol - BIGGER SIZE
                 if space_type in space_symbols:
                     symbol = space_symbols[space_type]
-                    size = 8
+                    size = 15  # Increased from 8 to 15 for better visibility
                     
                     if symbol == 'circle':
                         drawing.add(Circle(x_scaled, y_scaled, size, 
-                                         fillColor=self.colors[space_name], 
-                                         strokeColor=self.colors['border']))
+                                         fillColor=self.colors[space_type], 
+                                         strokeColor=self.colors['border'],
+                                         strokeWidth=2))
                     elif symbol == 'rectangle':
                         drawing.add(Rect(x_scaled - size, y_scaled - size, size*2, size*2,
-                                       fillColor=self.colors[space_name],
-                                       strokeColor=self.colors['border']))
+                                       fillColor=self.colors[space_type],
+                                       strokeColor=self.colors['border'],
+                                       strokeWidth=2))
                     elif symbol == 'polygon':
                         points = [(x_scaled, y_scaled + size), (x_scaled - size, y_scaled - size),
                                 (x_scaled + size, y_scaled - size)]
-                        drawing.add(Polygon(points, fillColor=self.colors[space_name],
-                                          strokeColor=self.colors['border']))
+                        drawing.add(Polygon(points, fillColor=self.colors[space_type],
+                                          strokeColor=self.colors['border'],
+                                          strokeWidth=2))
                     elif symbol == 'diamond':
                         points = [(x_scaled, y_scaled + size), (x_scaled + size, y_scaled),
                                 (x_scaled, y_scaled - size), (x_scaled - size, y_scaled)]
-                        drawing.add(Polygon(points, fillColor=self.colors[space_name],
-                                          strokeColor=self.colors['border']))
+                        drawing.add(Polygon(points, fillColor=self.colors[space_type],
+                                          strokeColor=self.colors['border'],
+                                          strokeWidth=2))
                     elif symbol == 'triangle':
                         points = [(x_scaled, y_scaled + size), (x_scaled - size, y_scaled - size),
                                 (x_scaled + size, y_scaled - size)]
-                        drawing.add(Polygon(points, fillColor=self.colors[space_name],
-                                          strokeColor=self.colors['border']))
+                        drawing.add(Polygon(points, fillColor=self.colors[space_type],
+                                          strokeColor=self.colors['border'],
+                                          strokeWidth=2))
                 
-                # Add label
-                drawing.add(String(x_scaled, y_scaled - 15, space_name.upper(),
-                                 fontSize=8, fillColor=self.colors['text']))
+                # Add label - BIGGER FONT
+                drawing.add(String(x_scaled, y_scaled - 25, space_name.upper(),
+                                 fontSize=12, fillColor=self.colors['text']))
     
-    def _draw_external_functions(self, drawing, positions, external_functions, min_x, min_y, max_y, scale):
-        """Draw external functions as building footprints"""
+    def _draw_external_functions(self, drawing, positions, external_functions, min_x, min_y, max_y, scale, external_anchors):
+        """Draw external functions as anchor points at corners - BIGGER AND MORE VISIBLE"""
         for func_name, direction in external_functions.items():
             if func_name in positions and isinstance(positions[func_name], list):
                 x, y = positions[func_name][:2]
                 x_scaled = (x - min_x) * scale
                 y_scaled = (max_y - min_y) * scale - (y - min_y) * scale
                 
-                # Draw building footprint
-                size = 12
-                drawing.add(Rect(x_scaled - size, y_scaled - size, size*2, size*2,
-                               fillColor=self.colors['building'],
-                               strokeColor=self.colors['border'],
-                               strokeWidth=1))
-                
-                # Add label
-                drawing.add(String(x_scaled, y_scaled - 20, func_name.upper(),
-                                 fontSize=7, fillColor=white))
+                # Check if this is an anchor point
+                if func_name in external_anchors:
+                    anchor_info = external_anchors[func_name]
+                    corner = anchor_info.get('corner', 'Unknown')
+                    
+                    # Draw anchor point - BIGGER SIZE
+                    size = 18  # Increased from 12 to 18
+                    drawing.add(Circle(x_scaled, y_scaled, size,
+                                     fillColor=self.colors['building'],
+                                     strokeColor=self.colors['border'],
+                                     strokeWidth=2))
+                    
+                    # Add anchor label - BIGGER FONT
+                    drawing.add(String(x_scaled, y_scaled - 25, f"{func_name.upper()}\n({corner})",
+                                     fontSize=10, fillColor=white))  # Increased from 7 to 10
+                else:
+                    # Draw regular external function - BIGGER SIZE
+                    size = 18  # Increased from 12 to 18
+                    drawing.add(Rect(x_scaled - size, y_scaled - size, size*2, size*2,
+                                   fillColor=self.colors['building'],
+                                   strokeColor=self.colors['border'],
+                                   strokeWidth=2))
+                    
+                    # Add label - BIGGER FONT
+                    drawing.add(String(x_scaled, y_scaled - 25, func_name.upper(),
+                                     fontSize=10, fillColor=white))  # Increased from 7 to 10
     
     def _draw_trees(self, drawing, tree_placement, positions, min_x, min_y, max_y, scale):
         """Draw trees based on placement data"""
@@ -592,42 +625,29 @@ class ProfessionalPlanExporter:
                                      fontSize=6, fillColor=self.colors['text']))
     
     def _draw_connections(self, drawing, links, positions, min_x, min_y, max_y, scale):
-        """Draw connections between spaces"""
+        """Draw connections between spaces - THICKER AND MORE VISIBLE"""
         for link in links:
-            # Handle different link formats
             if isinstance(link, dict):
                 source = link.get('source')
                 target = link.get('target')
-            elif isinstance(link, str):
-                # If link is a string, try to parse it as a simple connection
-                # Assuming format like "source->target" or just "source"
-                if '->' in link:
-                    source, target = link.split('->', 1)
-                else:
-                    # Skip single node connections
-                    continue
-            else:
-                # Skip invalid link formats
-                continue
-            
-            if (source in positions and target in positions and 
-                isinstance(positions[source], list) and isinstance(positions[target], list)):
                 
-                x1, y1 = positions[source][:2]
-                x2, y2 = positions[target][:2]
-                
-                x1_scaled = (x1 - min_x) * scale
-                y1_scaled = (max_y - min_y) * scale - (y1 - min_y) * scale
-                x2_scaled = (x2 - min_x) * scale
-                y2_scaled = (max_y - min_y) * scale - (y2 - min_y) * scale
-                
-                # Draw connection line
-                drawing.add(Line(x1_scaled, y1_scaled, x2_scaled, y2_scaled,
-                               strokeColor=self.colors['path'],
-                               strokeWidth=1.5))
+                if source in positions and target in positions:
+                    source_pos = positions[source]
+                    target_pos = positions[target]
+                    
+                    if isinstance(source_pos, list) and isinstance(target_pos, list) and len(source_pos) >= 2 and len(target_pos) >= 2:
+                        x1 = (source_pos[0] - min_x) * scale
+                        y1 = (max_y - min_y) * scale - (source_pos[1] - min_y) * scale
+                        x2 = (target_pos[0] - min_x) * scale
+                        y2 = (max_y - min_y) * scale - (target_pos[1] - min_y) * scale
+                        
+                        # Draw connection line - THICKER
+                        drawing.add(Line(x1, y1, x2, y2,
+                                       strokeColor=self.colors['path'],
+                                       strokeWidth=3))  # Increased from default to 3
     
     def _create_legend(self):
-        """Create a professional legend"""
+        """Create a professional legend without boundary box references"""
         elements = []
         
         # Legend title
@@ -639,15 +659,16 @@ class ProfessionalPlanExporter:
         )
         elements.append(Paragraph("LEGEND", legend_style))
         
-        # Legend items
+        # Legend items - REMOVED BOUNDARY BOX REFERENCES
         legend_data = [
-            ['Symbol', 'Space Type', 'Description'],
+            ['Symbol', 'Element Type', 'Description'],
+            ['●', 'ANCHOR', 'External function anchor point at corner'],
             ['●', 'PLAY', 'Active social spaces'],
             ['■', 'REST', 'Quiet contemplative areas'],
             ['▲', 'POND', 'Water features'],
             ['◆', 'FLOWER', 'Garden and planting areas'],
             ['▲', 'TREE', 'Tree and shade areas'],
-            ['■', 'BUILDING', 'External functions'],
+            ['■', 'EXTERNAL', 'External functions'],
             ['━━', 'PATH', 'Connections and circulation']
         ]
         
@@ -666,6 +687,7 @@ class ProfessionalPlanExporter:
         ]))
         
         elements.append(legend_table)
+        
         return elements
     
     def _create_specifications_page(self, attributes, tree_data):
@@ -758,6 +780,133 @@ class ProfessionalPlanExporter:
             ]))
             
             elements.append(tree_table)
+        
+        return elements
+    
+    def _create_design_documentation_page(self, design_data, concept, tree_data, attributes):
+        """Create comprehensive design documentation and analysis page"""
+        elements = []
+        
+        # Validate and parse design_data if it's a string
+        if isinstance(design_data, str):
+            try:
+                import json
+                design_data = json.loads(design_data)
+            except (json.JSONDecodeError, TypeError):
+                print(f"Warning: Could not parse design_data as JSON: {design_data}")
+                design_data = {}
+        
+        # Ensure design_data is a dictionary
+        if not isinstance(design_data, dict):
+            design_data = {}
+        
+        # Page title
+        title_style = ParagraphStyle(
+            'DocTitle',
+            parent=getSampleStyleSheet()['Heading1'],
+            fontSize=24,
+            spaceAfter=20,
+            alignment=TA_CENTER
+        )
+        elements.append(Paragraph("DESIGN DOCUMENTATION & ANALYSIS", title_style))
+        
+        # Design concept
+        elements.append(Paragraph("DESIGN CONCEPT", 
+                                getSampleStyleSheet()['Heading2']))
+        concept_text = f"""
+        {concept}
+        
+        This courtyard design creates a harmonious outdoor environment that balances functionality, 
+        aesthetics, and environmental sustainability. The design integrates multiple functional zones 
+        while maintaining visual coherence and spatial flow.
+        """
+        elements.append(Paragraph(concept_text, getSampleStyleSheet()['Normal']))
+        elements.append(Spacer(1, 15))
+        
+        # Functional zones
+        if isinstance(design_data, dict) and 'spaces' in design_data:
+            spaces = design_data['spaces']
+            if spaces:
+                elements.append(Paragraph("FUNCTIONAL ZONES", 
+                                        getSampleStyleSheet()['Heading2']))
+                
+                space_descriptions = []
+                for space_name, space_type in spaces.items():
+                    if space_type == 'play':
+                        space_descriptions.append(f"• <b>{space_name.title()}:</b> Active recreation and social interaction area")
+                    elif space_type == 'rest':
+                        space_descriptions.append(f"• <b>{space_name.title()}:</b> Quiet contemplation and relaxation zone")
+                    elif space_type == 'pond':
+                        space_descriptions.append(f"• <b>{space_name.title()}:</b> Water feature for visual interest and cooling")
+                    elif space_type == 'flower':
+                        space_descriptions.append(f"• <b>{space_name.title()}:</b> Garden area with seasonal color and fragrance")
+                    elif space_type == 'tree':
+                        space_descriptions.append(f"• <b>{space_name.title()}:</b> Shade and canopy area for comfort")
+                    else:
+                        space_descriptions.append(f"• <b>{space_name.title()}:</b> {space_type} functional area")
+                
+                if space_descriptions:
+                    elements.append(Paragraph("<br/>".join(space_descriptions), 
+                                            getSampleStyleSheet()['Normal']))
+                elements.append(Spacer(1, 15))
+        
+        # External functions
+        if isinstance(design_data, dict) and 'external_functions' in design_data:
+            external_functions = design_data['external_functions']
+            if external_functions:
+                elements.append(Paragraph("EXTERNAL FUNCTIONS", 
+                                        getSampleStyleSheet()['Heading2']))
+                
+                external_list = []
+                for func_name, direction in external_functions.items():
+                    external_list.append(f"• <b>{func_name.title()}:</b> Positioned facing {direction}")
+                
+                if external_list:
+                    elements.append(Paragraph("<br/>".join(external_list), 
+                                            getSampleStyleSheet()['Normal']))
+                elements.append(Spacer(1, 15))
+        
+        # Climate-specific design features
+        elements.append(Paragraph("CLIMATE & ENVIRONMENTAL FEATURES", 
+                                getSampleStyleSheet()['Heading2']))
+        climate_features = [
+            "• <b>Solar Orientation:</b> Optimized for maximum winter sun exposure and summer shade",
+            "• <b>Wind Protection:</b> Strategic placement of trees and structures to reduce wind exposure",
+            "• <b>Thermal Mass:</b> Use of materials with high thermal mass to moderate temperature fluctuations",
+            "• <b>Ventilation:</b> Natural airflow patterns designed for cooling and air quality",
+            "• <b>Water Management:</b> Sustainable drainage and water retention systems",
+            "• <b>Seasonal Adaptability:</b> Flexible spaces that accommodate different seasonal uses"
+        ]
+        elements.append(Paragraph("<br/>".join(climate_features), getSampleStyleSheet()['Normal']))
+        elements.append(Spacer(1, 15))
+        
+        # Understanding the Courtyard
+        elements.append(Paragraph("DESIGN PHILOSOPHY", 
+                                getSampleStyleSheet()['Heading2']))
+        understanding_text = """
+        This courtyard is designed as a comprehensive outdoor living environment that serves multiple 
+        functions while maintaining visual and functional coherence. The design creates distinct 
+        activity zones while ensuring smooth transitions and connections between spaces. Each element 
+        has been carefully considered for its contribution to the overall experience and functionality.
+        """
+        elements.append(Paragraph(understanding_text, getSampleStyleSheet()['Normal']))
+        elements.append(Spacer(1, 15))
+        
+        # Spatial analysis
+        if 'pos' in design_data:
+            elements.append(Paragraph("SPATIAL ANALYSIS", 
+                                    getSampleStyleSheet()['Heading2']))
+            
+            pos_data = design_data['pos']
+            if isinstance(pos_data, dict):
+                spatial_info = []
+                for space_name, coords in pos_data.items():
+                    if isinstance(coords, list) and len(coords) >= 2:
+                        spatial_info.append(f"• {space_name}: Position ({coords[0]:.1f}, {coords[1]:.1f})")
+                
+                if spatial_info:
+                    elements.append(Paragraph("<br/>".join(spatial_info), 
+                                            getSampleStyleSheet()['Normal']))
         
         return elements
     

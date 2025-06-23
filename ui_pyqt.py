@@ -171,7 +171,7 @@ class FlaskClientChatUI(QMainWindow):
         }
 
         # Set window size and show
-        self.setGeometry(200, 200, 1200, 900)
+        self.setGeometry(200, 200, 1600, 1200)
         
         # Initialize button states
         self.update_phase_buttons()
@@ -479,6 +479,7 @@ class FlaskClientChatUI(QMainWindow):
     def geometry_data(self):
         """
         Aggregate all relevant data from all phases, calculating and using bounded positions.
+        Creates a rectangular boundary box with external functions as anchor points at corners.
         """
         try:
             # Standard data extraction
@@ -489,12 +490,13 @@ class FlaskClientChatUI(QMainWindow):
             weights = extract_json(extract_weights(self.concept, self.extracted_functions, self.attributes))
             anchors = extract_json(extract_anchors(self.concept, self.extracted_functions, self.attributes))
             
-            # --- New Bounded Position Generation ---
+            # --- Enhanced Rectangular Boundary Box System ---
             
             # 1. Fetch corner data from Grasshopper via the server
             corners = []
             calculated_placements = {}
             final_pos = {}
+            boundary_box = {}
 
             try:
                 placement_response = requests.get("http://127.0.0.1:5000/external_function_placement", timeout=5)
@@ -508,69 +510,110 @@ class FlaskClientChatUI(QMainWindow):
             except Exception as e:
                 print(f"⚠️ Error fetching GH data: {e}. Proceeding without bounded placement.")
 
-            # 2. If we have corners, calculate placements and call the new LLM function
+            # 2. If we have corners, create a proper rectangular boundary box
             if corners and len(corners) >= 4:
-                # --- New, more robust corner assignment logic ---
+                # --- Enhanced boundary box calculation ---
 
-                # a. Find the bounding box limits of the corners
+                # a. Calculate the bounding box limits
                 min_x = min(p[0] for p in corners)
                 max_x = max(p[0] for p in corners)
                 min_y = min(p[1] for p in corners)
                 max_y = max(p[1] for p in corners)
 
-                # b. Find the actual corner point closest to each ideal corner
+                # Store boundary box information
+                boundary_box = {
+                    "min_x": min_x,
+                    "max_x": max_x,
+                    "min_y": min_y,
+                    "max_y": max_y,
+                    "width": max_x - min_x,
+                    "height": max_y - min_y,
+                    "center": [(min_x + max_x) / 2, (min_y + max_y) / 2]
+                }
+
+                print(f"Created boundary box: {boundary_box}")
+
+                # b. Find the actual corner points closest to ideal corners
                 def find_closest_point(ideal_coord, point_list):
                     ideal_x, ideal_y = ideal_coord
                     return min(point_list, key=lambda p: ((p[0] - ideal_x)**2 + (p[1] - ideal_y)**2))
 
+                # Define ideal corner positions
+                ideal_corners = {
+                    'NW': (min_x, max_y),  # Northwest corner
+                    'NE': (max_x, max_y),  # Northeast corner
+                    'SW': (min_x, min_y),  # Southwest corner
+                    'SE': (max_x, min_y)   # Southeast corner
+                }
+
+                # Find actual corner points closest to ideal positions
                 actual_corner_points = {
-                    'NW': find_closest_point((min_x, max_y), corners), 'NE': find_closest_point((max_x, max_y), corners),
-                    'SW': find_closest_point((min_x, min_y), corners), 'SE': find_closest_point((max_x, min_y), corners)
+                    'NW': find_closest_point(ideal_corners['NW'], corners),
+                    'NE': find_closest_point(ideal_corners['NE'], corners),
+                    'SW': find_closest_point(ideal_corners['SW'], corners),
+                    'SE': find_closest_point(ideal_corners['SE'], corners)
                 }
 
-                # c. Define a prioritized preference list for each cardinal direction to avoid conflicts
+                print(f"Actual corner points: {actual_corner_points}")
+
+                # c. Enhanced corner assignment with priority system
                 direction_to_corner_preference = {
-                    'N': ['NE', 'NW'], 'E': ['SE', 'NE'],
-                    'S': ['SW', 'SE'], 'W': ['NW', 'SW']
+                    'N': ['NE', 'NW'],      # North-facing functions prefer east or west corners
+                    'E': ['SE', 'NE'],      # East-facing functions prefer south or north corners
+                    'S': ['SW', 'SE'],      # South-facing functions prefer west or east corners
+                    'W': ['NW', 'SW']       # West-facing functions prefer north or south corners
                 }
 
-                # d. Assign functions to available corners without collision
+                # d. Assign external functions to corners as anchor points
                 used_corners = set()
+                external_anchors = {}
+                
                 for name, direction in self.extracted_functions.items():
-                    direction_key = direction.upper()[0]
+                    direction_key = direction.upper()[0] if direction else 'N'
+                    
+                    assigned_corner_key = None
+                    
+                    # Try to assign to preferred corner based on direction
                     if direction_key in direction_to_corner_preference:
-                        assigned_corner_key = None
-                        # Find the first available preferred corner
                         for corner_key in direction_to_corner_preference[direction_key]:
                             if corner_key not in used_corners:
                                 assigned_corner_key = corner_key
                                 break
-                        
-                        # If no preferred corner was available, pick any other unused corner
-                        if not assigned_corner_key:
-                            available_corners = set(actual_corner_points.keys()) - used_corners
-                            if available_corners:
-                                assigned_corner_key = available_corners.pop()
+                    
+                    # If no preferred corner available, pick any unused corner
+                    if not assigned_corner_key:
+                        available_corners = set(actual_corner_points.keys()) - used_corners
+                        if available_corners:
+                            assigned_corner_key = available_corners.pop()
 
-                        if assigned_corner_key:
-                            point = actual_corner_points[assigned_corner_key]
-                            calculated_placements[name] = [point[0], point[1]]
-                            used_corners.add(assigned_corner_key) # Mark corner as used
-                        else:
-                            print(f"Warning: No available corner for function '{name}'. All are assigned.")
+                    if assigned_corner_key:
+                        point = actual_corner_points[assigned_corner_key]
+                        calculated_placements[name] = [point[0], point[1]]
+                        external_anchors[name] = {
+                            "corner": assigned_corner_key,
+                            "position": [point[0], point[1]],
+                            "direction": direction
+                        }
+                        used_corners.add(assigned_corner_key)
+                        print(f"Assigned {name} to {assigned_corner_key} corner at {point}")
+                    else:
+                        print(f"Warning: No available corner for function '{name}'. All corners are assigned.")
                 
+                print(f"External anchors: {external_anchors}")
                 print("Calculated fixed placements for external functions:", calculated_placements)
                 
-                # Call the new, more powerful extract_pos function
+                # Call the enhanced extract_pos function with boundary information
                 pos_response = extract_pos(self.concept, self.extracted_functions, corners, calculated_placements)
                 final_pos = extract_json(pos_response)
 
             else:
-                # Fallback to the old method if no corners are available
+                # Fallback to unbounded position generation
                 print("Falling back to unbounded position generation.")
-                pos_response = extract_pos(self.concept, self.extracted_functions, [], {}) # Call with empty boundary info
+                pos_response = extract_pos(self.concept, self.extracted_functions, [], {})
                 final_pos = extract_json(pos_response)
+                boundary_box = {}
 
+            # Store enhanced design data with boundary information
             self.design_data = {
                 "spaces": spaces["spaces"],
                 "links": links["links"],
@@ -579,9 +622,11 @@ class FlaskClientChatUI(QMainWindow):
                 "weights": weights["weights"],
                 "anchors": anchors["anchors"],
                 "external_functions": self.extracted_functions,
-                "pos": final_pos.get("pos", {}) # Ensure we get the nested 'pos' object
+                "pos": final_pos.get("pos", {}),
+                "boundary_box": boundary_box,
+                "external_anchors": external_anchors if 'external_anchors' in locals() else {}
             }
-            print("Design data aggregated:", self.design_data)
+            print("Enhanced design data aggregated with boundary box:", self.design_data)
 
         except Exception as e:
             self.chat_display.append("<span style='color: red;'>Error extracting geometry data.</span>")
@@ -674,6 +719,11 @@ class FlaskClientChatUI(QMainWindow):
             )
             llm_output_json = extract_json(llm_output)
             print("Initial graph layout:", llm_output_json)
+            
+            # Add boundary box data to the graph if available
+            if "boundary_box" in self.design_data and self.design_data["boundary_box"]:
+                llm_output_json["boundary_box"] = self.design_data["boundary_box"]
+                print("Added boundary box to graph data:", self.design_data["boundary_box"])
             
             # Create and show the graph window using MainWindow from graph_gh.py
             self.graph_window = MainWindow(graph_data=llm_output_json)
@@ -968,8 +1018,8 @@ class FlaskClientChatUI(QMainWindow):
 
         # Description
         description = QLabel(
-            "This tool captures both 3D and top-down views of your Rhino model, then uses AI to generate "
-            "artistic renderings based on your design brief. You'll get both perspectives enhanced!"
+            "Generate 3D visualizations and plan views of your courtyard design using AI. "
+            "The 3D view shows all features in realistic detail, while the plan view provides a precise top-down layout."
         )
         description.setWordWrap(True)
         description.setStyleSheet("font-size: 16px; margin-bottom: 15px;")
@@ -1022,7 +1072,7 @@ class FlaskClientChatUI(QMainWindow):
         self.generate_3d_button.clicked.connect(self.handle_generate_3d_view)
         view_buttons_layout.addWidget(self.generate_3d_button)
 
-        # Top-Down View Button
+        # Plan View Button
         self.generate_plan_button = QPushButton("📋 Generate Plan View")
         self.generate_plan_button.setStyleSheet("""
             QPushButton {
@@ -1084,7 +1134,8 @@ class FlaskClientChatUI(QMainWindow):
         # 3D View Tab
         self.image_3d_display_label = QLabel("3D view will appear here.")
         self.image_3d_display_label.setAlignment(Qt.AlignCenter)
-        self.image_3d_display_label.setMinimumHeight(300)
+        self.image_3d_display_label.setMinimumHeight(600)
+        self.image_3d_display_label.setMinimumWidth(800)
         self.image_3d_display_label.setStyleSheet("""
             QLabel {
                 background-color: #e8e8e8;
@@ -1099,7 +1150,8 @@ class FlaskClientChatUI(QMainWindow):
         # Plan View Tab
         self.image_plan_display_label = QLabel("Plan view will appear here.")
         self.image_plan_display_label.setAlignment(Qt.AlignCenter)
-        self.image_plan_display_label.setMinimumHeight(300)
+        self.image_plan_display_label.setMinimumHeight(600)
+        self.image_plan_display_label.setMinimumWidth(800)
         self.image_plan_display_label.setStyleSheet("""
             QLabel {
                 background-color: #e8e8e8;
@@ -1580,61 +1632,66 @@ class FlaskClientChatUI(QMainWindow):
         self.send_query_to_gh_button.setVisible(False)
 
     def handle_generate_both_views(self):
-        """Generate both 3D and plan views with AI enhancement."""
-        self.image_signals.status_update.emit("🔄 Capturing both 3D and plan views from Rhino... Please wait.")
+        """Generate both 3D and plan views using text-to-image."""
+        self.image_signals.status_update.emit("🔄 Generating both 3D and plan views from design data... Please wait.")
         QApplication.processEvents()
-
-        # Define paths for both screenshots
-        temp_dir = os.path.join(os.path.expanduser("~"), "temp_copilot_images")
-        if not os.path.exists(temp_dir):
-            os.makedirs(temp_dir)
-        screenshot_3d_path = os.path.join(temp_dir, "rhino_3d_view.png")
-        screenshot_plan_path = os.path.join(temp_dir, "rhino_plan_view.png")
 
         def _task():
             try:
-                # 1. Capture 3D view
-                self.image_signals.status_update.emit("📸 Capturing 3D view...")
-                command_3d = {
-                    "command": "take_screenshot",
-                    "payload": {"path": screenshot_3d_path}
-                }
-                requests.post("http://localhost:5000/command", json=command_3d)
+                # Check if we have design data
+                if not hasattr(self, 'design_data') or not self.design_data:
+                    self.image_signals.status_update.emit("⚠️ No design data available. Please complete the design process first.")
+                    return
 
-                # Wait for 3D screenshot completion
-                for _ in range(20):
-                    status_response = requests.get("http://localhost:5000/command_status")
-                    if status_response.status_code == 200:
-                        status_data = status_response.json()
-                        if status_data.get("status") == "complete":
-                            break
-                    time.sleep(1)
-
-                # 2. Capture plan view
-                self.image_signals.status_update.emit("📋 Capturing top-down plan view...")
-                command_plan = {
-                    "command": "take_top_down_screenshot",
-                    "payload": {"path": screenshot_plan_path}
-                }
-                requests.post("http://localhost:5000/command", json=command_plan)
-
-                # Wait for plan screenshot completion
-                for _ in range(20):
-                    status_response = requests.get("http://localhost:5000/command_status")
-                    if status_response.status_code == 200:
-                        status_data = status_response.json()
-                        if status_data.get("status") == "complete":
-                            break
-                    time.sleep(1)
-
-                # 3. Process both images with AI
-                self.image_signals.status_update.emit("🎨 Processing 3D view with AI...")
-                self.process_image_with_ai(screenshot_3d_path, "3d", "3D View")
+                # Generate 3D view first
+                self.image_signals.status_update.emit("🎭 Generating 3D view...")
                 
-                self.image_signals.status_update.emit("🎨 Processing plan view with AI...")
-                self.process_image_with_ai(screenshot_plan_path, "plan", "Plan View")
-
-                self.image_signals.status_update.emit("✅ Both views generated successfully! Check the tabs above.")
+                concept = getattr(self, 'concept', 'A beautiful courtyard design')
+                attributes = getattr(self, 'attributes', {})
+                tree_data = getattr(self, 'tree_data', {})
+                
+                from image_gen import generate_3d_view_from_text, generate_detailed_3d_courtyard_prompt
+                from image_gen import generate_plan_view_from_text, generate_detailed_plan_courtyard_prompt
+                
+                # Generate 3D view
+                three_d_prompt = generate_detailed_3d_courtyard_prompt(concept, self.design_data, tree_data, attributes)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                three_d_filename = f"3d_view_{timestamp}.png"
+                
+                success_3d, output_path_3d, message_3d = generate_3d_view_from_text(three_d_prompt, three_d_filename)
+                
+                if success_3d:
+                    self.image_signals.image_update.emit(output_path_3d)
+                
+                # Generate plan view
+                self.image_signals.status_update.emit("📋 Generating plan view...")
+                
+                plan_prompt = generate_detailed_plan_courtyard_prompt(concept, self.design_data, tree_data, attributes)
+                plan_filename = f"plan_view_{timestamp}.png"
+                
+                success_plan, output_path_plan, message_plan = generate_plan_view_from_text(plan_prompt, plan_filename)
+                
+                if success_plan:
+                    self.image_signals.plan_image_update.emit(output_path_plan)
+                
+                # Show results
+                if success_3d and success_plan:
+                    success_html = self.create_assistant_message("✅ Both views generated successfully! Check the tabs above for your 3D visualization and plan layout.")
+                    self.chat_display.append(success_html)
+                    self.chat_display.verticalScrollBar().setValue(
+                        self.chat_display.verticalScrollBar().maximum()
+                    )
+                    self.image_signals.status_update.emit("✅ Both views generated successfully! Check the tabs above.")
+                else:
+                    error_messages = []
+                    if not success_3d:
+                        error_messages.append(f"3D view: {message_3d}")
+                    if not success_plan:
+                        error_messages.append(f"Plan view: {message_plan}")
+                    
+                    error_html = self.create_assistant_message(f"❌ Some views failed to generate: {'; '.join(error_messages)}", "error")
+                    self.chat_display.append(error_html)
+                    self.image_signals.status_update.emit(f"❌ Some views failed to generate")
 
             except Exception as e:
                 self.image_signals.status_update.emit(f"❌ Error generating views: {str(e)}")
@@ -1643,112 +1700,135 @@ class FlaskClientChatUI(QMainWindow):
         threading.Thread(target=_task).start()
 
     def handle_generate_3d_view(self):
-        """Generate only the 3D view with AI enhancement."""
-        self.image_signals.status_update.emit("📸 Capturing 3D view from Rhino... Please wait.")
+        """Generate 3D view using text-to-image with detailed courtyard features."""
+        self.image_signals.status_update.emit("🎭 Generating 3D view from design data... Please wait.")
         QApplication.processEvents()
-
-        # Define path for 3D screenshot
-        temp_dir = os.path.join(os.path.expanduser("~"), "temp_copilot_images")
-        if not os.path.exists(temp_dir):
-            os.makedirs(temp_dir)
-        screenshot_path = os.path.join(temp_dir, "rhino_3d_view.png")
 
         def _task():
             try:
-                # Capture 3D view
-                command = {
-                    "command": "take_screenshot",
-                    "payload": {"path": screenshot_path}
-                }
-                requests.post("http://localhost:5000/command", json=command)
+                # Check if we have design data
+                if not hasattr(self, 'design_data') or not self.design_data:
+                    self.image_signals.status_update.emit("⚠️ No design data available. Please complete the design process first.")
+                    return
 
-                # Wait for completion
-                for _ in range(20):
-                    status_response = requests.get("http://localhost:5000/command_status")
-                    if status_response.status_code == 200:
-                        status_data = status_response.json()
-                        if status_data.get("status") == "complete":
-                            break
-                    time.sleep(1)
-
-                # Process with AI
-                self.image_signals.status_update.emit("🎨 Processing 3D view with AI...")
-                self.process_image_with_ai(screenshot_path, "3d", "3D View")
+                # Generate 3D view prompt from design data
+                self.image_signals.status_update.emit("📝 Analyzing design data and generating 3D view prompt...")
+                
+                concept = getattr(self, 'concept', 'A beautiful courtyard design')
+                attributes = getattr(self, 'attributes', {})
+                tree_data = getattr(self, 'tree_data', {})
+                
+                from image_gen import generate_3d_view_from_text, generate_detailed_3d_courtyard_prompt
+                
+                # Generate comprehensive 3D view prompt with detailed courtyard features
+                three_d_prompt = generate_detailed_3d_courtyard_prompt(concept, self.design_data, tree_data, attributes)
+                
+                print(f"Generated 3D view prompt: {three_d_prompt}")
+                
+                # Generate 3D view using text-to-image
+                self.image_signals.status_update.emit("🎨 Generating 3D view with AI...")
+                
+                # Generate unique output filename
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_filename = f"3d_view_{timestamp}.png"
+                
+                success, output_path, message = generate_3d_view_from_text(three_d_prompt, output_filename)
+                
+                if success:
+                    # Display the generated 3D view in the Image Generation tab
+                    self.image_signals.image_update.emit(output_path)
+                    
+                    # Add success message to chat
+                    success_html = self.create_assistant_message("✅ 3D view generated successfully! Here's your realistic courtyard visualization with all features.")
+                    self.chat_display.append(success_html)
+                    
+                    # Scroll to bottom to show the new message
+                    self.chat_display.verticalScrollBar().setValue(
+                        self.chat_display.verticalScrollBar().maximum()
+                    )
+                    
+                    self.image_signals.status_update.emit(f"✅ 3D view generated successfully!")
+                else:
+                    error_html = self.create_assistant_message(message, "error")
+                    self.chat_display.append(error_html)
+                    self.image_signals.status_update.emit(message)
 
             except Exception as e:
+                print(f"DEBUG: Exception in 3D view generation: {e}")
+                error_html = self.create_assistant_message(f"❌ Error generating 3D view: {str(e)}", "error")
+                self.chat_display.append(error_html)
                 self.image_signals.status_update.emit(f"❌ Error generating 3D view: {str(e)}")
                 print(f"Error in generate 3D view: {e}")
 
         threading.Thread(target=_task).start()
 
     def handle_generate_plan_view(self):
-        """Generate only the plan view with AI enhancement."""
-        self.image_signals.status_update.emit("📋 Capturing top-down plan view from Rhino... Please wait.")
+        """Generate plan view using text-to-image from design data with coordinates."""
+        self.image_signals.status_update.emit("📋 Generating plan view from design data... Please wait.")
         QApplication.processEvents()
-
-        # Define path for plan screenshot
-        temp_dir = os.path.join(os.path.expanduser("~"), "temp_copilot_images")
-        if not os.path.exists(temp_dir):
-            os.makedirs(temp_dir)
-        screenshot_path = os.path.join(temp_dir, "rhino_plan_view.png")
 
         def _task():
             try:
-                # Capture plan view
-                command = {
-                    "command": "take_top_down_screenshot",
-                    "payload": {"path": screenshot_path}
-                }
-                print(f"DEBUG: Sending plan screenshot command: {command}")
-                response = requests.post("http://localhost:5000/command", json=command)
-                print(f"DEBUG: Command response status: {response.status_code}")
-                
-                if response.status_code != 200:
-                    print(f"DEBUG: Command failed with status {response.status_code}")
-                    self.image_signals.status_update.emit(f"❌ Failed to send command to Rhino (status {response.status_code})")
+                # Check if we have design data
+                if not hasattr(self, 'design_data') or not self.design_data:
+                    self.image_signals.status_update.emit("⚠️ No design data available. Please complete the design process first.")
                     return
 
-                # Wait for completion
-                for attempt in range(20):
-                    print(f"DEBUG: Checking status attempt {attempt + 1}")
-                    status_response = requests.get("http://localhost:5000/command_status")
-                    if status_response.status_code == 200:
-                        status_data = status_response.json()
-                        print(f"DEBUG: Status data: {status_data}")
-                        if status_data.get("status") == "complete":
-                            print("DEBUG: Plan screenshot completed")
-                            break
-                        elif status_data.get("status") == "error":
-                            print(f"DEBUG: Plan screenshot failed: {status_data.get('error')}")
-                            self.image_signals.status_update.emit(f"❌ Plan screenshot failed: {status_data.get('error')}")
-                            return
-                    time.sleep(1)
+                # Generate plan view prompt from design data
+                self.image_signals.status_update.emit("📝 Analyzing design data and generating plan view prompt...")
+                
+                concept = getattr(self, 'concept', 'A beautiful courtyard design')
+                attributes = getattr(self, 'attributes', {})
+                tree_data = getattr(self, 'tree_data', {})
+                
+                from image_gen import generate_plan_view_from_text, generate_detailed_plan_courtyard_prompt
+                
+                # Generate comprehensive plan view prompt with coordinates and realistic details
+                plan_prompt = generate_detailed_plan_courtyard_prompt(concept, self.design_data, tree_data, attributes)
+                
+                print(f"Generated plan view prompt: {plan_prompt}")
+                
+                # Generate plan view using text-to-image
+                self.image_signals.status_update.emit("🎨 Generating plan view with AI...")
+                
+                # Generate unique output filename
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_filename = f"plan_view_{timestamp}.png"
+                
+                success, output_path, message = generate_plan_view_from_text(plan_prompt, output_filename)
+                
+                if success:
+                    # Display the generated plan view in the Image Generation tab
+                    self.image_signals.plan_image_update.emit(output_path)
+                    
+                    # Add success message to chat
+                    success_html = self.create_assistant_message("✅ Plan view generated successfully! Here's your precise top-down courtyard layout with coordinates.")
+                    self.chat_display.append(success_html)
+                    
+                    # Scroll to bottom to show the new message
+                    self.chat_display.verticalScrollBar().setValue(
+                        self.chat_display.verticalScrollBar().maximum()
+                    )
+                    
+                    self.image_signals.status_update.emit(f"✅ Plan view generated successfully!")
                 else:
-                    print("DEBUG: Plan screenshot timed out")
-                    self.image_signals.status_update.emit("❌ Plan screenshot timed out")
-
-                # Check if file exists
-                print(f"DEBUG: Checking if file exists: {screenshot_path}")
-                if os.path.exists(screenshot_path):
-                    file_size = os.path.getsize(screenshot_path)
-                    print(f"DEBUG: File exists, size: {file_size} bytes")
-                    if file_size > 0:
-                        # Process with AI
-                        self.image_signals.status_update.emit("🎨 Processing plan view with AI...")
-                        self.process_image_with_ai(screenshot_path, "plan", "Plan View")
-                    else:
-                        print("DEBUG: File exists but is empty")
-                        self.image_signals.status_update.emit("⚠️ Screenshot file is empty. Please try again.")
-                else:
-                    print("DEBUG: File does not exist")
-                    self.image_signals.status_update.emit("⚠️ Screenshot file not found. Please check if Grasshopper script is running.")
+                    error_html = self.create_assistant_message(message, "error")
+                    self.chat_display.append(error_html)
+                    self.image_signals.status_update.emit(message)
 
             except Exception as e:
                 print(f"DEBUG: Exception in plan view generation: {e}")
+                error_html = self.create_assistant_message(f"❌ Error generating plan view: {str(e)}", "error")
+                self.chat_display.append(error_html)
                 self.image_signals.status_update.emit(f"❌ Error generating plan view: {str(e)}")
                 print(f"Error in generate plan view: {e}")
 
         threading.Thread(target=_task).start()
+
+    def handle_generate_concept_view(self):
+        """Generate concept view using text-to-image from design data."""
+        # This function is deprecated - concept view has been removed
+        pass
 
     def process_image_with_ai(self, image_path, view_type, display_name):
         """Process an image with AI enhancement based on view type."""
@@ -1765,10 +1845,10 @@ class FlaskClientChatUI(QMainWindow):
             # Display the captured image
             if view_type == "3d":
                 self.image_signals.image_update.emit(image_path)
-            else:  # plan view
-                self.image_signals.plan_image_update.emit(image_path)
+            else:  # concept view
+                self.image_signals.concept_image_update.emit(image_path)
 
-            # Generate appropriate prompt based on view type
+            # Generate appropriate prompt based on view type with CRTYRD trigger word
             try:
                 if hasattr(self, 'design_data') and self.design_data:
                     concept = getattr(self, 'concept', 'A beautiful courtyard design')
@@ -1785,11 +1865,11 @@ class FlaskClientChatUI(QMainWindow):
                     # Generate base prompt
                     base_prompt = generate_image_prompt(concept, attributes, connections, targets, spaces, pwr, tree_placement)
                     
-                    # Enhance prompt based on view type
+                    # Enhance prompt based on view type with CRTYRD trigger word
                     if view_type == "3d":
-                        enhanced_prompt = f"{base_prompt}, architectural 3D visualization, dramatic lighting, photorealistic rendering, cinematic composition"
+                        enhanced_prompt = f"CRTYRD, {base_prompt}, architectural 3D visualization, dramatic lighting, photorealistic rendering, cinematic composition, high quality, detailed textures, natural materials, immersive atmosphere, professional architectural photography, golden hour lighting, depth of field, atmospheric perspective, preserve original camera angle, maintain perspective, enhance without rotation"
                     else:  # plan view
-                        enhanced_prompt = f"{base_prompt}, architectural plan view, technical drawing style, clean lines, professional layout, top-down perspective"
+                        enhanced_prompt = f"CRTYRD, {base_prompt}, architectural plan view, technical drawing style, clean lines, professional layout, top-down perspective, minimalist design, precise measurements, clear zone boundaries, elegant spatial composition"
                     
                     self.image_signals.status_update.emit(f"🎨 Generating AI-enhanced {display_name}...")
                     
@@ -1800,14 +1880,17 @@ class FlaskClientChatUI(QMainWindow):
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                     output_filename = f"ai_enhanced_{view_type}_{timestamp}.png"
                     
-                    success, output_path, message = generate_ai_enhanced_image(image_path, enhanced_prompt, output_filename)
+                    # Pass design data for detailed architectural description
+                    success, output_path, message = generate_ai_enhanced_image(
+                        image_path, enhanced_prompt, output_filename, self.design_data
+                    )
                     
                     if success:
                         # Display the generated image in the appropriate tab
                         if view_type == "3d":
                             self.image_signals.image_update.emit(output_path)
-                        else:  # plan view
-                            self.image_signals.plan_image_update.emit(output_path)
+                        else:  # concept view
+                            self.image_signals.concept_image_update.emit(output_path)
                         
                         self.image_signals.status_update.emit(f"✅ {display_name} generated successfully!")
                     else:
@@ -1825,7 +1908,7 @@ class FlaskClientChatUI(QMainWindow):
             if view_type == "3d":
                 self.image_signals.error_update.emit(f"Failed to load {display_name}.")
             else:
-                self.image_signals.plan_error_update.emit(f"Failed to load {display_name}.")
+                self.image_signals.concept_error_update.emit(f"Failed to load {display_name}.")
 
     def clear_query_results_and_display(self):
         """Clear stored query results, hide buttons, and clear the display"""
@@ -1833,6 +1916,16 @@ class FlaskClientChatUI(QMainWindow):
         self.clear_results_button.setVisible(False)
         self.query_results.clear()
         self.query_results.append("Query results cleared. You can ask a new question.")
+
+    def update_concept_image_display(self, image_path):
+        """Update the concept view image display (called from main thread)"""
+        # This function is deprecated - concept view has been removed
+        pass
+
+    def update_concept_image_error(self, error_message):
+        """Update the concept view image display with an error (called from main thread)"""
+        # This function is deprecated - concept view has been removed
+        pass
 
 def extract_json(body):
     # if body is json then return
@@ -1927,6 +2020,3 @@ if __name__ == "__main__":
     
     # Start the event loop
     sys.exit(app.exec_())
-
-
-
