@@ -12,6 +12,11 @@ import datetime
 from flask_cors import CORS
 import json
 from utci_epw_query import get_location_and_epw, analyze_hoys
+from epw_handler import extract_hoys_from_message, extract_hottest_hoy_from_epw
+from flask import Flask, request, jsonify
+from epw_analysis import get_hoys_from_intent
+from server.config import client, completion_model
+import traceback
 
 
 app = Flask(__name__)
@@ -67,7 +72,7 @@ def climate_location_epw():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route('/climate/hoy_analysis', methods=['POST'])
+""" @app.route('/climate/hoy_analysis', methods=['POST'])
 def climate_hoy_analysis():
     try:
         data = request.get_json()
@@ -81,7 +86,36 @@ def climate_hoy_analysis():
         return jsonify(result)
 
     except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500 """
+
+
+
+@app.route('/climate/hoy_analysis', methods=['POST'])
+def hoy_analysis():
+    try:
+        data = request.get_json()
+        time_message = data.get("time_message", "")
+        zip_url = data.get("zip_url", None)
+
+        if not time_message:
+            return jsonify({"success": False, "error": "Missing time_message"}), 400
+
+        hoys = get_hoys_from_intent(time_message, zip_url, client, completion_model)
+
+        if not hoys:
+            return jsonify({"success": False, "error": "Could not extract HOYs from message"}), 200
+
+        return jsonify({
+            "success": True,
+            "hoys": hoys,
+            "total": len(hoys)
+        })
+
+    except Exception as e:
+        traceback.print_exc()  # 👈 This prints the full error in the terminal
         return jsonify({"success": False, "error": str(e)}), 500
+
+
     
     
 @app.route('/plot_area', methods=['GET', 'POST'])

@@ -1,28 +1,36 @@
+from epw_analysis import handle_zip_request, get_hoys_from_intent
 from server.config import client, completion_model
-from epw_handler import handle_zip_request, extract_hoys_from_message
+
 
 def get_location_and_epw(location_message):
-    response = handle_zip_request(location_message, client=client, model=completion_model)
+    result = handle_zip_request(location_message, client, completion_model)
 
-    if not response.get("success"):
-        return {"success": False, "error": response.get("error", "Unknown error")}
+    if not result["success"]:
+        return {
+            "success": False,
+            "error": result.get("error", "Unknown error")
+        }
 
     return {
         "success": True,
         "location": {
-            "city": response["city"],
-            "country": response["country"]
+            "city": result["city"],
+            "country": result["country"]
         },
         "zip_response": {
-            "zip_url": response["zip_url"]
+            "zip_url": result["zip_url"]
         }
     }
 
-def analyze_hoys(time_message, zip_url=None):
-    if time_message.lower() == "skip":
-        return {"success": True, "hoys": [], "total_hours": 0}
 
-    hoys = extract_hoys_from_message(time_message, client=client, model=completion_model)
+def analyze_hoys(time_message, zip_url=None):
+    hoys = get_hoys_from_intent(time_message, zip_url, client, completion_model)
+
+    if not hoys:
+        return {
+            "success": False,
+            "error": "Failed to extract HOYs from message."
+        }
 
     return {
         "success": True,

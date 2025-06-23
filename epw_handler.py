@@ -2,6 +2,10 @@ import json
 import re
 from rapidfuzz import process
 import pycountry
+import pandas as pd
+import requests
+import io
+import os
 
 def extract_location_from_message(message, client, model):
     system_prompt = """
@@ -152,4 +156,33 @@ Do NOT include extra text or code blocks.
         raise ValueError("Invalid HOY list")
     except Exception as e:
         print("❌ Failed to parse HOYs:", content)
+        return []
+
+def extract_hottest_hoy_from_epw(epw_path_or_url):
+    """
+    Parse the EPW file (local path or URL) and return the HOY with the highest dry bulb temperature.
+    """
+    try:
+        # Load EPW content
+        if epw_path_or_url.startswith("http"):
+            content = requests.get(epw_path_or_url).content.decode("utf-8", errors="ignore")
+        else:
+            with open(epw_path_or_url, "r", encoding="utf-8") as f:
+                content = f.read()
+
+        # EPW format: first 8 lines = header, line 9 onward = hourly data
+        lines = content.splitlines()[8:]
+        df = pd.read_csv(io.StringIO("\n".join(lines)), header=None)
+
+        # Dry bulb temperature is in column 6 (0-based)
+        dry_bulb_col = 6
+        df[dry_bulb_col] = pd.to_numeric(df[dry_bulb_col], errors='coerce')
+
+        # Find max dry bulb temperature
+        hottest_hoy = int(df[dry_bulb_col].idxmax())
+
+        return [hottest_hoy]
+
+    except Exception as e:
+        print(f"❌ Failed to extract hottest HOY: {e}")
         return []
