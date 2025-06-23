@@ -11,6 +11,7 @@ import os
 import datetime
 from flask_cors import CORS
 import json
+from utci_epw_query import get_location_and_epw, analyze_hoys
 
 
 app = Flask(__name__)
@@ -46,6 +47,43 @@ command_queue = {"command": None, "payload": {}}
 command_status = {"status": "idle", "result": {}}
 command_lock = threading.Lock()
 
+@app.route('/grasshopper_ping', methods=['GET'])
+def grasshopper_ping():
+    return jsonify({"status": "ok", "message": "Flask server is alive and reachable from Grasshopper"})
+
+# climate epw
+@app.route('/climate/location_epw', methods=['POST'])
+def climate_location_epw():
+    try:
+        data = request.get_json()
+        location_message = data.get('location_message', '')
+        if not location_message:
+            return jsonify({"success": False, "error": "location_message is required"}), 400
+
+        result = get_location_and_epw(location_message)
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/climate/hoy_analysis', methods=['POST'])
+def climate_hoy_analysis():
+    try:
+        data = request.get_json()
+        time_message = data.get('time_message', '')
+        zip_url = data.get('zip_url', None)
+
+        if not time_message:
+            return jsonify({"success": False, "error": "time_message is required"}), 400
+
+        result = analyze_hoys(time_message, zip_url)
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    
+    
 @app.route('/plot_area', methods=['GET', 'POST'])
 def get_plot_area():
     global area
