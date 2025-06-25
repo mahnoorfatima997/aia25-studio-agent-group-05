@@ -11,6 +11,7 @@ import os
 import datetime
 from flask_cors import CORS
 import json
+from datetime import datetime
 
 
 app = Flask(__name__)
@@ -26,19 +27,27 @@ tree_data = None
 graph_data = None
 width = None
 length = None
-query_engine = None  # Global variable for the graph query engine
-query_results = None  # Global variable to store the latest query results
+query_engine = None  
+query_results = None  
+climate_data = None 
+utci_values = None  
 
-# --- Global In-Memory Storage ---
+
 # Simple dictionary to hold the latest data received from Grasshopper
 latest_data = {
-    "plot_area": {"area": "400", "width": "20", "length": "20"},
+    "plot_area": {"area": None, "width": None, "length": None},
     "external_functions": {},
     "geometry_data": {},
     "graph_data": {},
     "tree_data": {},
     "query_results": {},
-    "external_function_placement": {}
+    "external_function_placement": {},
+    "climate_data": {},
+    "utci_values": [],
+    "utci_values_flat": [],
+    "heatmap_data": [],
+    "concept": "General courtyard design",
+    "heatmap_analysis": {}
 }
 
 # --- New Command Queue for Screenshot ---
@@ -48,12 +57,27 @@ command_lock = threading.Lock()
 
 @app.route('/plot_area', methods=['GET', 'POST'])
 def get_plot_area():
-    global area
     if request.method == 'POST':
         data = request.get_json()
-        area = data.get('input')
-        print("Received user input:", area)
-        return jsonify({"area": area, "width": width, "length": length})
+        plot_area_data = data.get('input', {})
+        
+        # Store the plot area data in the latest_data dictionary
+        if isinstance(plot_area_data, dict):
+            latest_data["plot_area"] = {
+                "area": plot_area_data.get('area'),
+                "width": plot_area_data.get('width'),
+                "length": plot_area_data.get('length')
+            }
+        else:
+            # If input is just a string/number, treat it as area
+            latest_data["plot_area"] = {
+                "area": str(plot_area_data),
+                "width": None,
+                "length": None
+            }
+        
+        print("Received plot area data:", latest_data["plot_area"])
+        return jsonify(latest_data["plot_area"])
     else:  # GET
         return jsonify(latest_data.get("plot_area", {}))
     
@@ -235,7 +259,7 @@ def ask_graph_question():
             "cypher_query": cypher_query,
             "raw_data": raw_data,
             "human_answer": human_answer,
-            "timestamp": str(datetime.datetime.now())
+            "timestamp": str(datetime.now())
         }
         
         return jsonify({
@@ -308,6 +332,107 @@ def get_query_results():
         return jsonify({"error": "No query results available. Please run a query first."})
     return jsonify({"query_results": query_results})
 
+@app.route('/climate_data', methods=['GET', 'POST'])
+def handle_climate_data():
+    """Handle climate analysis data for Grasshopper"""
+    global climate_data
+    if request.method == 'POST':
+        # UI sends climate data to be stored for Grasshopper
+        data = request.get_json()
+        climate_data = data.get('climate_data', data)
+        print("Received climate data from UI:", climate_data)
+        
+        # Update the latest_data dictionary
+        latest_data["climate_data"] = climate_data
+        
+        return jsonify({
+            "status": "Climate data updated successfully.",
+            "climate_data": climate_data
+        })
+    else:  
+        # Grasshopper retrieves the latest climate data
+        if climate_data is None:
+            return jsonify({
+                "error": "No climate data available. Please run climate analysis first."
+            })
+        else:
+            return jsonify({
+                "climate_data": climate_data,
+                "timestamp": str(datetime.now())
+            })
+
+@app.route('/epw_file', methods=['GET', 'POST'])
+def handle_epw_file():
+    """Handle EPW file data for Ladybug Tools in Grasshopper"""
+    global climate_data
+    
+    if request.method == 'POST':
+        # UI sends EPW file data to be stored for Grasshopper
+        data = request.get_json()
+        epw_data = data.get('epw_data', data)
+        print("Received EPW file data from UI")
+        
+        # Update the latest_data dictionary
+        latest_data["epw_file"] = epw_data
+        
+        return jsonify({
+            "status": "EPW file data updated successfully.",
+            "file_size": len(epw_data.get('content', '')) if epw_data else 0
+        })
+    else:  # GET
+        # Grasshopper retrieves the EPW file data for Ladybug Tools
+        epw_data = latest_data.get("epw_file")
+        if epw_data is None:
+            return jsonify({
+                "error": "No EPW file data available. Please run climate analysis first."
+            })
+        else:
+            return jsonify({
+                "epw_file": epw_data,
+                "timestamp": str(datetime.now())
+            })
+
+@app.route('/climate/hoy_analysis', methods=['POST'])
+def analyze_hoy():
+    """Analyze HOY (Hour of Year) from time message and EPW URL"""
+    try:
+        data = request.get_json()
+        time_message = data.get('time_message', '')
+        zip_url = data.get('zip_url', '')
+        
+        if not time_message or not zip_url:
+            return jsonify({
+                "success": False,
+                "error": "Both time_message and zip_url are required"
+            })
+        
+        # Import the analysis function
+        from epw_analysis import get_hoys_from_intent
+        from server.config import client, completion_model
+        
+        # Get HOYs from the time message
+        hoys = get_hoys_from_intent(time_message, zip_url, client, completion_model)
+        
+        if hoys:
+            return jsonify({
+                "success": True,
+                "hoys": hoys,
+                "time_message": time_message,
+                "zip_url": zip_url,
+                "total_hours": len(hoys)
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": "Could not extract HOYs from the time message"
+            })
+            
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Analysis failed: {str(e)}"
+        })
+
 # --- New Endpoints for Screenshot Command System ---
 
 @app.route('/command', methods=['GET', 'POST', 'DELETE'])
@@ -348,6 +473,275 @@ def handle_command_status():
 
         elif request.method == 'GET':
             return jsonify(command_status)
+
+@app.route('/utci_values', methods=['GET', 'POST'])
+def handle_utci_values():
+    if request.method == 'POST':
+        data = request.get_json()
+        utci_values = data.get('utci_values', [])
+        utci_values_flat = data.get('utci_values_flat', [])
+        
+        # Store both sets of values
+        latest_data['utci_values'] = utci_values
+        latest_data['utci_values_flat'] = utci_values_flat
+        
+        print("Received UTCI values from Grasshopper:")
+        print(f"  With trees: {utci_values}")
+        print(f"  Without trees: {utci_values_flat}")
+        
+        return jsonify({"status": "UTCI values received successfully"})
+    else:  # GET
+        utci_with_trees = latest_data.get('utci_values', [])
+        utci_without_trees = latest_data.get('utci_values_flat', [])
+        
+        # Calculate averages
+        avg_with_trees = 0
+        avg_without_trees = 0
+        
+        if utci_with_trees:
+            try:
+                avg_with_trees = sum(float(x) for x in utci_with_trees) / len(utci_with_trees)
+            except (ValueError, TypeError):
+                avg_with_trees = 0
+        
+        if utci_without_trees:
+            try:
+                avg_without_trees = sum(float(x) for x in utci_without_trees) / len(utci_without_trees)
+            except (ValueError, TypeError):
+                avg_without_trees = 0
+        
+        # Calculate improvement
+        improvement = avg_without_trees - avg_with_trees if avg_without_trees > avg_with_trees else avg_with_trees - avg_without_trees
+        
+        # Generate improvement tips based on the comparison
+        tips = []
+        if avg_with_trees < avg_without_trees:
+            # Trees are helping (lower UTCI is better)
+            if improvement > 5:
+                tips.append("🌳 Trees are providing excellent thermal comfort! Consider adding more shade trees for even better results.")
+            elif improvement > 2:
+                tips.append("🌳 Trees are helping with thermal comfort. You could add more deciduous trees for seasonal benefits.")
+            else:
+                tips.append("🌳 Trees are providing some thermal benefit. Consider denser tree planting for greater impact.")
+        else:
+            # Trees might not be helping as expected
+            tips.append("🌳 Consider optimizing tree placement or adding different tree species for better shade coverage.")
+        
+        # Additional tips based on average UTCI values
+        if avg_with_trees > 30:
+            tips.append("🌺 Add more flowering plants and ground cover to reduce surface temperatures.")
+        if avg_with_trees > 25:
+            tips.append("💧 Consider adding water features like fountains or ponds for evaporative cooling.")
+        if avg_with_trees > 20:
+            tips.append("🏗️ Optimize building orientation and add pergolas for additional shade.")
+        
+        # If no specific tips, provide general improvement suggestions
+        if not tips:
+            tips.append("🌱 Consider adding more vegetation, water features, or shade structures to improve thermal comfort.")
+        
+        return jsonify({
+            "utci_values": utci_with_trees,
+            "utci_values_flat": utci_without_trees,
+            "average_with_trees": round(avg_with_trees, 2),
+            "average_without_trees": round(avg_without_trees, 2),
+            "improvement": round(improvement, 2),
+            "trees_helping": avg_with_trees < avg_without_trees,
+            "tips": tips
+        })
+
+@app.route("/upload_screenshot", methods=["POST"])
+def upload_screenshot():
+    """Receive screenshot from Grasshopper and save it"""
+    try:
+        if 'image' not in request.files:
+            return jsonify({'success': False, 'error': 'No image file provided'}), 400
+        
+        image = request.files['image']
+        
+        # Create save directory
+        save_dir = os.path.expanduser("~/Downloads/gh_screenshots")
+        os.makedirs(save_dir, exist_ok=True)
+        
+        # Generate unique filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"gh_screenshot_{timestamp}.png"
+        save_path = os.path.join(save_dir, filename)
+        
+        # Save the image
+        image.save(save_path)
+        
+        print(f"✅ Screenshot saved: {save_path}")
+        
+        return jsonify({
+            'success': True, 
+            'screenshot_path': save_path,
+            'message': 'Screenshot uploaded successfully'
+        })
+        
+    except Exception as e:
+        print(f"❌ Error uploading screenshot: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route("/take_screenshot", methods=["POST"])
+def take_screenshot():
+    """Endpoint to trigger screenshot capture (for UI compatibility)"""
+    try:
+        # This endpoint is called by the UI to trigger screenshot
+        # The actual screenshot is taken by Grasshopper and sent to /upload_screenshot
+        
+        # Check if we have a recent screenshot
+        save_dir = os.path.expanduser("~/Downloads/gh_screenshots")
+        if os.path.exists(save_dir):
+            # Get the most recent screenshot
+            files = [f for f in os.listdir(save_dir) if f.endswith('.png')]
+            if files:
+                # Sort by modification time (newest first)
+                files.sort(key=lambda x: os.path.getmtime(os.path.join(save_dir, x)), reverse=True)
+                latest_screenshot = os.path.join(save_dir, files[0])
+                
+                return jsonify({
+                    'success': True,
+                    'screenshot_path': latest_screenshot,
+                    'message': 'Latest screenshot found'
+                })
+        
+        return jsonify({
+            'success': False,
+            'error': 'No screenshot found. Please capture a screenshot from Grasshopper first.'
+        })
+        
+    except Exception as e:
+        print(f"❌ Error in take_screenshot: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/concept', methods=['GET', 'POST'])
+def handle_concept():
+    """Handle concept storage for heatmap analysis"""
+    global latest_data
+    
+    if request.method == 'POST':
+        try:
+            data = request.get_json()
+            concept = data.get('concept', 'General courtyard design')
+            
+            # Store the concept
+            latest_data['concept'] = concept
+            
+            print(f"Received concept from UI: {concept}")
+            
+            return jsonify({
+                'success': True,
+                'message': 'Concept stored successfully',
+                'concept': concept
+            })
+            
+        except Exception as e:
+            print(f"Error storing concept: {e}")
+            return jsonify({
+                'success': False,
+                'error': f'Failed to store concept: {str(e)}'
+            }), 500
+    
+    else:  # GET request
+        concept = latest_data.get('concept', 'No concept defined')
+        return jsonify({
+            'concept': concept,
+            'has_concept': bool(concept and concept != 'No concept defined')
+        })
+
+@app.route('/heatmap_analysis', methods=['GET', 'POST'])
+def handle_heatmap_analysis():
+    """Endpoint for analyzing heatmap data and providing activity recommendations"""
+    global latest_data
+    
+    if request.method == 'POST':
+        try:
+            data = request.get_json()
+            heatmap_data = data.get('heatmap_data', [])
+            
+            # Get concept from the UI (stored in latest_data) instead of from Grasshopper
+            concept = latest_data.get('concept', 'General courtyard design')
+            
+            # Validate heatmap data format
+            if not isinstance(heatmap_data, list):
+                return jsonify({
+                    'success': False, 
+                    'error': 'heatmap_data must be a list of [coordinate, utci_value] tuples'
+                }), 400
+            
+            # Validate each data point
+            validated_data = []
+            for i, point in enumerate(heatmap_data):
+                if not isinstance(point, (list, tuple)) or len(point) != 2:
+                    return jsonify({
+                        'success': False,
+                        'error': f'Invalid data point at index {i}. Expected [coordinate, utci_value]'
+                    }), 400
+                
+                coord, utci_value = point
+                try:
+                    # Ensure coordinates are numeric
+                    if isinstance(coord, (list, tuple)) and len(coord) >= 2:
+                        x, y = float(coord[0]), float(coord[1])
+                    else:
+                        x, y = float(coord), 0.0
+                    
+                    # Ensure UTCI value is numeric
+                    utci = float(utci_value)
+                    
+                    validated_data.append([[x, y], utci])
+                except (ValueError, TypeError) as e:
+                    return jsonify({
+                        'success': False,
+                        'error': f'Invalid numeric values at index {i}: {e}'
+                    }), 400
+            
+            # Store the heatmap data
+            latest_data['heatmap_data'] = validated_data
+            
+            print(f"Received heatmap data: {len(validated_data)} points")
+            print(f"Using concept from UI: {concept}")
+            
+            # Analyze the heatmap data using the LLM function
+            try:
+                from llm_calls import analyze_heatmap_activities
+                analysis_result = analyze_heatmap_activities(concept, validated_data)
+                
+                # Store the analysis result
+                latest_data['heatmap_analysis'] = analysis_result
+                
+                return jsonify({
+                    'success': True,
+                    'message': 'Heatmap analysis completed successfully',
+                    'analysis': analysis_result
+                })
+                
+            except Exception as e:
+                print(f"Error in heatmap analysis: {e}")
+                return jsonify({
+                    'success': False,
+                    'error': f'Analysis failed: {str(e)}'
+                }), 500
+                
+        except Exception as e:
+            print(f"Error processing heatmap data: {e}")
+            return jsonify({
+                'success': False,
+                'error': f'Request processing failed: {str(e)}'
+            }), 500
+    
+    else:  # GET request
+        # Return the latest analysis results
+        heatmap_data = latest_data.get('heatmap_data', [])
+        concept = latest_data.get('concept', 'No concept defined')
+        analysis = latest_data.get('heatmap_analysis', {})
+        
+        return jsonify({
+            'heatmap_data_points': len(heatmap_data),
+            'concept': concept,
+            'analysis': analysis,
+            'has_analysis': bool(analysis)
+        })
 
 def run_flask():
     app.run(debug=False, use_reloader=False)  # Run Flask server in a separate thread

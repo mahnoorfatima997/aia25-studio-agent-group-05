@@ -1041,32 +1041,33 @@ Remember: Great design is iterative, and every iteration brings them closer to t
 
 def generate_design_tip(phase, concept, design_data):
     """
-    Generates a proactive, context-aware design tip based on the current phase and data.
+    Generates a proactive, context-aware design tip from Captain CAT's perspective.
     """
     # Create a string representation of the design data for the prompt
     design_data_str = json.dumps(design_data, indent=2, default=str)
 
     system_prompt = f"""
-        You are a wise and experienced landscape architect who loves mentoring other designers. You have a warm, encouraging personality and always see the potential in every design.
+        You are Captain CAT, a wise and experienced courtyard design expert with a warm, encouraging personality. You love mentoring designers and always see the potential in every courtyard design. You speak directly as Captain CAT, using "I" and speaking from your own perspective.
 
         Your goal is to provide a single, thoughtful tip that feels like advice from a trusted friend and mentor. The user is currently in the '{phase}' phase of their design process.
 
-        **Your Style:**
+        **Your Style as Captain CAT:**
         - Be encouraging and constructive, like a supportive mentor
-        - Use warm, conversational language
+        - Use warm, conversational language with a touch of feline wisdom
         - Show genuine interest in their design journey
         - Keep your tip to **1-2 concise sentences**
-        - Frame it as helpful guidance or an inspiring question
-        - Don't just repeat what they've said - add new value by making connections they might have missed
+        - Frame it as helpful guidance or an insight
+        - Speak directly as Captain CAT, using "I" and "my" when appropriate
+        - Avoid generic advice - make it specific to their current phase
+        - Be positive but realistic about challenges they might face
 
-        **Phase-Specific Guidance:**
-        - **concept:** After they've written a concept, suggest what to focus on next with enthusiasm. (e.g., "What a lovely vision! As we move to defining functions, I'm curious - have you thought about how a 'cafe' might serve as a social hub connecting different areas?")
-        - **functions:** After they've listed functions, suggest potential attributes to consider. (e.g., "Great list of functions! When we define attributes next, I'd love to explore material choices with you. Do you see rustic wooden benches in the 'rest' area, or perhaps something more modern?")
-        - **attributes:** After they add attributes, hint at the upcoming graph stage. (e.g., "These attributes add such wonderful detail! Soon, we'll visualize these spaces together. Think about which functions feel most important to you - they might deserve to be larger or more central.")
-        - **graph:** While they are viewing the graph, suggest a specific interaction or relationship to consider. (e.g., "Try moving the 'pond' closer to the 'rest' area - I think it would create such a tranquil corner and enhance the sensory experience.")
-        - **criticism:** After they ask for criticism, give a summary tip that empowers them. (e.g., "Remember that great design is a journey of discovery. Feel free to revisit earlier phases anytime - that's how the best spaces evolve!")
+        **Current Design Context:**
+        - Phase: {phase}
+        - Concept: {concept}
+        - Design Data: {design_data_str}
 
-        You must output only the single tip as a string. No JSON, no extra text, no quotation marks.
+        **Response Format:**
+        Provide a single, encouraging tip that feels personal and relevant to their current design phase. Speak as Captain CAT directly to the user.
     """
 
     user_prompt = f"""
@@ -1082,7 +1083,7 @@ def generate_design_tip(phase, concept, design_data):
         {"role": "user", "content": user_prompt}
     ]
 
-    print("Generating advisor tip...")
+    print("Generating Captain CAT's tip...")
     try:
         response = client.chat.completions.create(
             model=completion_model,
@@ -1093,8 +1094,8 @@ def generate_design_tip(phase, concept, design_data):
         tip = response.choices[0].message.content.strip()
         return tip
     except Exception as e:
-        print(f"Error generating advisor tip: {e}")
-        return "Think about how all the design elements can work together in harmony."
+        print(f"Error generating Captain CAT's tip: {e}")
+        return "I think about how all the design elements can work together in harmony."
 
 def extract_tree_placement(concept, attributes):
     chat_messages = [
@@ -1531,5 +1532,180 @@ def generate_plan_view_prompt(concept, design_data, tree_data, attributes):
     final_prompt = f"{sentence1} {sentence2} {sentence3}"
     
     return final_prompt
+
+def analyze_heatmap_activities(concept, heatmap_data):
+    """
+    Analyzes heatmap data with UTCI values to recommend suitable activities for different courtyard areas.
+    
+    Args:
+        concept (str): The user's courtyard design concept
+        heatmap_data (list): List of tuples with [mesh_coordinate, utci_value]
+    
+    Returns:
+        dict: Analysis results with activity recommendations for different thermal zones
+    """
+    try:
+        # Convert heatmap data to a structured format for the LLM
+        heatmap_points = []
+        for coord, utci_value in heatmap_data:
+            if isinstance(coord, (list, tuple)) and len(coord) >= 2:
+                x, y = coord[0], coord[1]
+                heatmap_points.append({
+                    "x": float(x),
+                    "y": float(y),
+                    "utci": float(utci_value)
+                })
+        
+        # Calculate thermal zones
+        utci_values = [point["utci"] for point in heatmap_points]
+        min_utci = min(utci_values) if utci_values else 0
+        max_utci = max(utci_values) if utci_values else 50
+        
+        # Create thermal comfort categories
+        thermal_zones = {
+            "cold_stress": {"min": -40, "max": 9, "description": "Cold stress zone"},
+            "comfortable": {"min": 9, "max": 26, "description": "Thermal comfort zone"},
+            "heat_stress": {"min": 26, "max": 46, "description": "Heat stress zone"}
+        }
+        
+        system_prompt = f"""
+        You are Captain CAT, an expert in climate-responsive courtyard design. Analyze the provided heatmap data to recommend suitable activities for different areas of the courtyard based on thermal comfort.
+
+        **Courtyard Concept:** {concept}
+        
+        **Heatmap Data:** {len(heatmap_points)} points with UTCI values ranging from {min_utci:.1f}°C to {max_utci:.1f}°C
+        
+        **Thermal Comfort Zones:**
+        - Cold Stress (UTCI < 9°C): Areas that are too cold for comfort
+        - Comfortable (UTCI 9-26°C): Areas with optimal thermal comfort
+        - Heat Stress (UTCI > 26°C): Areas that are too hot for comfort
+        
+        **Your Task:**
+        1. Analyze the heatmap data to identify thermal zones
+        2. Recommend suitable activities for each zone based on the concept
+        3. Suggest design improvements for problematic areas
+        4. Provide specific placement recommendations for different activities
+        
+        **Response Format:**
+        Return a JSON object with the following structure:
+        {{
+            "thermal_analysis": {{
+                "total_points": number,
+                "utci_range": {{"min": number, "max": number}},
+                "zone_distribution": {{
+                    "cold_stress": {{"count": number, "percentage": number}},
+                    "comfortable": {{"count": number, "percentage": number}},
+                    "heat_stress": {{"count": number, "percentage": number}}
+                }}
+            }},
+            "activity_recommendations": {{
+                "cold_stress_activities": ["activity1", "activity2"],
+                "comfortable_activities": ["activity1", "activity2", "activity3"],
+                "heat_stress_activities": ["activity1", "activity2"]
+            }},
+            "design_recommendations": {{
+                "shade_improvements": ["recommendation1", "recommendation2"],
+                "cooling_strategies": ["strategy1", "strategy2"],
+                "heating_strategies": ["strategy1", "strategy2"]
+            }},
+            "placement_guidance": {{
+                "high_priority_areas": ["area1", "area2"],
+                "activity_zones": {{
+                    "zone_name": {{"coordinates": [x, y], "activities": ["activity1", "activity2"]}}
+                }}
+            }}
+        }}
+        
+        Focus on practical, implementable recommendations that align with the courtyard concept.
+        """
+        
+        # Create user message with heatmap data
+        user_message = f"""
+        Please analyze this heatmap data for my courtyard design: "{concept}"
+        
+        Heatmap points: {heatmap_points[:10]}... (showing first 10 of {len(heatmap_points)} points)
+        UTCI range: {min_utci:.1f}°C to {max_utci:.1f}°C
+        
+        What activities would be suitable for different areas of my courtyard based on the thermal comfort data?
+        """
+        
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message}
+        ]
+        
+        print("Analyzing heatmap data for activity recommendations...")
+        
+        response = client.chat.completions.create(
+            model=completion_model,
+            messages=messages,
+            temperature=0.7,
+            max_tokens=2000
+        )
+        
+        result = response.choices[0].message.content
+        
+        # Try to extract JSON from the response
+        try:
+            import json
+            import re
+            
+            # Find JSON in the response
+            json_match = re.search(r'\{.*\}', result, re.DOTALL)
+            if json_match:
+                analysis_result = json.loads(json_match.group(0))
+                return analysis_result
+            else:
+                # If no JSON found, create a structured response
+                return {
+                    "thermal_analysis": {
+                        "total_points": len(heatmap_points),
+                        "utci_range": {"min": min_utci, "max": max_utci},
+                        "zone_distribution": {
+                            "cold_stress": {"count": 0, "percentage": 0},
+                            "comfortable": {"count": 0, "percentage": 0},
+                            "heat_stress": {"count": 0, "percentage": 0}
+                        }
+                    },
+                    "activity_recommendations": {
+                        "cold_stress_activities": ["Sheltered seating", "Greenhouse areas"],
+                        "comfortable_activities": ["General courtyard activities", "Outdoor dining", "Play areas"],
+                        "heat_stress_activities": ["Shaded seating", "Water features"]
+                    },
+                    "design_recommendations": {
+                        "shade_improvements": ["Add more trees", "Install pergolas"],
+                        "cooling_strategies": ["Water features", "Ventilation improvements"],
+                        "heating_strategies": ["Sun traps", "Wind protection"]
+                    },
+                    "placement_guidance": {
+                        "high_priority_areas": ["Areas with extreme UTCI values"],
+                        "activity_zones": {
+                            "comfort_zone": {"coordinates": [0, 0], "activities": ["General activities"]}
+                        }
+                    },
+                    "raw_response": result
+                }
+                
+        except Exception as e:
+            print(f"Error parsing heatmap analysis response: {e}")
+            return {
+                "error": "Failed to parse analysis response",
+                "raw_response": result
+            }
+            
+    except Exception as e:
+        print(f"Error analyzing heatmap data: {e}")
+        return {
+            "error": f"Analysis failed: {str(e)}",
+            "thermal_analysis": {
+                "total_points": 0,
+                "utci_range": {"min": 0, "max": 0},
+                "zone_distribution": {
+                    "cold_stress": {"count": 0, "percentage": 0},
+                    "comfortable": {"count": 0, "percentage": 0},
+                    "heat_stress": {"count": 0, "percentage": 0}
+                }
+            }
+        }
 
 

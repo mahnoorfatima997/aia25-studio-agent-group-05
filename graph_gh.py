@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import (
     QWidget, QPushButton, QComboBox, QLabel, QMessageBox, QGraphicsItem,
     QGraphicsRectItem, QFileDialog
 )
-from PyQt5.QtGui import QPen, QBrush, QFont, QPainter, QColor, QPainterPath
+from PyQt5.QtGui import QPen, QBrush, QFont, QPainter, QColor, QPainterPath, QIcon
 from PyQt5.QtCore import Qt, QPointF
 from matplotlib import colormaps
 
@@ -212,7 +212,7 @@ class GraphEditor(QGraphicsView):
         super().__init__()
         self.setRenderHint(QPainter.Antialiasing)
         self.setScene(QGraphicsScene(self))
-        self.setSceneRect(0, 0, 1000, 800)
+        self.setSceneRect(0, 0, 1800, 1200)  # Made scene bigger to match window size
         
         # Set background color for better aesthetics
         self.setBackgroundBrush(QBrush(QColor("#F8F9FA")))  # Light gray background
@@ -258,11 +258,12 @@ class GraphEditor(QGraphicsView):
 
     def add_cardinal_directions(self):
         # Add cardinal direction letters at the edges of the grid, positioned further out to avoid overlap
+        # East is at the top for this building orientation
         directions = {
-            "N": ((self.X_MIN + self.X_MAX)/2, self.Y_MAX + 5),  # North at top, further out
-            "E": (self.X_MIN - 5, (self.Y_MIN + self.Y_MAX)/2),  # East at right, further out
-            "S": ((self.X_MIN + self.X_MAX)/2, self.Y_MIN - 5),  # South at bottom, further out
-            "W": (self.X_MAX + 5, (self.Y_MIN + self.Y_MAX)/2)   # West at left, further out
+            "E": ((self.X_MIN + self.X_MAX)/2, self.Y_MAX + 5),  # East at top, further out
+            "N": (self.X_MAX + 5, (self.Y_MIN + self.Y_MAX)/2),  # North at right, further out
+            "W": ((self.X_MIN + self.X_MAX)/2, self.Y_MIN - 5),  # West at bottom, further out
+            "S": (self.X_MIN - 5, (self.Y_MIN + self.Y_MAX)/2)   # South at left, further out
         }
         
         for direction, (x, y) in directions.items():
@@ -294,16 +295,16 @@ class GraphEditor(QGraphicsView):
         normalized_x = (x - x_min) / x_range
         normalized_y = (y - y_min) / y_range
         
-        # Transform to scene coordinates
-        scene_x = normalized_x * 700 + 150
-        scene_y = (1 - normalized_y) * 500 + 150  # Invert y for screen coordinates
+        # Transform to scene coordinates - using more space in the larger scene
+        scene_x = normalized_x * 1400 + 200  # Increased from 1000 to 1400, offset from 150 to 200
+        scene_y = (1 - normalized_y) * 1000 + 100  # Increased from 700 to 1000, offset from 150 to 100
         return scene_x, scene_y
 
     def transform_to_grid_coords(self, scene_x, scene_y):
         """Transform scene coordinates to grid coordinates"""
         # Convert scene coordinates to normalized coordinates [0, 1]
-        normalized_x = (scene_x - 150) / 700
-        normalized_y = 1 - (scene_y - 150) / 500  # Invert y for grid coordinates
+        normalized_x = (scene_x - 200) / 1400  # Updated to match new transformation
+        normalized_y = 1 - (scene_y - 100) / 1000  # Updated to match new transformation
         
         # Convert normalized coordinates to grid coordinates
         grid_x = normalized_x * self.X_RANGE + self.X_MIN
@@ -540,7 +541,14 @@ class GraphEditor(QGraphicsView):
 class MainWindow(QMainWindow):
     def __init__(self, graph_data=None):
         super().__init__()
-        self.setWindowTitle("Resizable Node Graph Editor")
+        self.setWindowTitle("Cat's Graph-Based Lab")
+        
+        # Set cat icon for the window
+        try:
+            self.setWindowIcon(QIcon("cat_icon.png"))
+        except Exception as e:
+            print(f"Could not set cat icon: {e}")
+        
         self.versions = []  # List to store all versions
         self.current_version = 0  # Index of current version
 
@@ -591,7 +599,7 @@ class MainWindow(QMainWindow):
         # Store initial version
         self.versions.append(graph_data)
         self.version_combo.addItem("Version 1")
-        self.resize(1000, 800)
+        self.resize(1800, 1200)  # Made the window bigger
 
     def save_new_version(self):
         # Get current graph state

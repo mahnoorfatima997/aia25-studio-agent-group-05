@@ -1,0 +1,102 @@
+[
+  {
+    "city": "London",
+    "country": "GBR",
+    "url": "https://energyplus-weather.s3.amazonaws.com/Europe_WMO_Region_6/GBR_London.Gatwick.AP.037760_IWEC/GBR_London.Gatwick.AP.037760_IWEC.zip"
+  },
+  {
+    "city": "New York",
+    "country": "USA",
+    "url": "https://energyplus-weather.s3.amazonaws.com/North_America_WMO_Region_4_USA/NY_New.York-J.F.Kennedy.Intl.AP.744860_TMY3/NY_New.York-J.F.Kennedy.Intl.AP.744860_TMY3.zip"
+  },
+  {
+    "city": "Paris",
+    "country": "FRA",
+    "url": "https://energyplus-weather.s3.amazonaws.com/Europe_WMO_Region_6/FRA_Paris.Orly.AP.071490_IWEC/FRA_Paris.Orly.AP.071490_IWEC.zip"
+  },
+  {
+    "city": "Tokyo",
+    "country": "JPN",
+    "url": "https://energyplus-weather.s3.amazonaws.com/Asia_WMO_Region_2/JPN_Tokyo.Haneda.AP.476710_IWEC/JPN_Tokyo.Haneda.AP.476710_IWEC.zip"
+  },
+  {
+    "city": "Sydney",
+    "country": "AUS",
+    "url": "https://energyplus-weather.s3.amazonaws.com/Oceania_WMO_Region_5/AUS_NSW_Sydney.947670_IWEC/AUS_NSW_Sydney.947670_IWEC.zip"
+  },
+  {
+    "city": "Toronto",
+    "country": "CAN",
+    "url": "https://energyplus-weather.s3.amazonaws.com/North_America_WMO_Region_4_CAN/ON_Toronto.Pearson.Intl.AP.716240_CWEC/ON_Toronto.Pearson.Intl.AP.716240_CWEC.zip"
+  },
+  {
+    "city": "Berlin",
+    "country": "DEU",
+    "url": "https://energyplus-weather.s3.amazonaws.com/Europe_WMO_Region_6/DEU_Berlin-Tempelhof.103820_IWEC/DEU_Berlin-Tempelhof.103820_IWEC.zip"
+  },
+  {
+    "city": "Moscow",
+    "country": "RUS",
+    "url": "https://energyplus-weather.s3.amazonaws.com/Europe_WMO_Region_6/RUS_Moscow.276120_IWEC/RUS_Moscow.276120_IWEC.zip"
+  },
+  {
+    "city": "Beijing",
+    "country": "CHN",
+    "url": "https://energyplus-weather.s3.amazonaws.com/Asia_WMO_Region_2/CHN_Beijing.545110_IWEC/CHN_Beijing.545110_IWEC.zip"
+  },
+  {
+    "city": "Mumbai",
+    "country": "IND",
+    "url": "https://energyplus-weather.s3.amazonaws.com/Asia_WMO_Region_2/IND_Mumbai.430030_IWEC/IND_Mumbai.430030_IWEC.zip"
+  },
+  {
+    "city": "Cairo",
+    "country": "EGY",
+    "url": "https://energyplus-weather.s3.amazonaws.com/Africa_WMO_Region_1/EGY_Cairo.623660_IWEC/EGY_Cairo.623660_IWEC.zip"
+  },
+  {
+    "city": "Mexico City",
+    "country": "MEX",
+    "url": "https://energyplus-weather.s3.amazonaws.com/North_America_WMO_Region_4_MEX/MEX_Mexico.City.766790_IWEC/MEX_Mexico.City.766790_IWEC.zip"
+  },
+  {
+    "city": "São Paulo",
+    "country": "BRA",
+    "url": "https://energyplus-weather.s3.amazonaws.com/South_America_WMO_Region_3/BRA_Sao.Paulo.837810_IWEC/BRA_Sao.Paulo.837810_IWEC.zip"
+  },
+  {
+    "city": "Los Angeles",
+    "country": "USA",
+    "url": "https://energyplus-weather.s3.amazonaws.com/North_America_WMO_Region_4_USA/CA_CA_Los.Angeles.Intl.AP.722950_TMY3/CA_CA_Los.Angeles.Intl.AP.722950_TMY3.zip"
+  },
+  {
+    "city": "Chicago",
+    "country": "USA",
+    "url": "https://energyplus-weather.s3.amazonaws.com/North_America_WMO_Region_4_USA/IL_IL_Chicago-OHare.Intl.AP.725300_TMY3/IL_IL_Chicago-OHare.Intl.AP.725300_TMY3.zip"
+  },
+  {
+    "city": "Miami",
+    "country": "USA",
+    "url": "https://energyplus-weather.s3.amazonaws.com/North_America_WMO_Region_4_USA/FL_FL_Miami.Intl.AP.722020_TMY3/FL_FL_Miami.Intl.AP.722020_TMY3.zip"
+  },
+  {
+    "city": "Seattle",
+    "country": "USA",
+    "url": "https://energyplus-weather.s3.amazonaws.com/North_America_WMO_Region_4_USA/WA_WA_Seattle-Tacoma.Intl.AP.727930_TMY3/WA_WA_Seattle-Tacoma.Intl.AP.727930_TMY3.zip"
+  },
+  {
+    "city": "Denver",
+    "country": "USA",
+    "url": "https://energyplus-weather.s3.amazonaws.com/North_America_WMO_Region_4_USA/CO_CO_Denver.Intl.AP.724690_TMY3/CO_CO_Denver.Intl.AP.724690_TMY3.zip"
+  },
+  {
+    "city": "Phoenix",
+    "country": "USA",
+    "url": "https://energyplus-weather.s3.amazonaws.com/North_America_WMO_Region_4_USA/AZ_AZ_Phoenix.Sky.Harbor.Intl.AP.722780_TMY3/AZ_AZ_Phoenix.Sky.Harbor.Intl.AP.722780_TMY3.zip"
+  },
+  {
+    "city": "Boston",
+    "country": "USA",
+    "url": "https://energyplus-weather.s3.amazonaws.com/North_America_WMO_Region_4_USA/MA_MA_Boston-Logan.Intl.AP.725090_TMY3/MA_MA_Boston-Logan.Intl.AP.725090_TMY3.zip"
+  }
+] 
