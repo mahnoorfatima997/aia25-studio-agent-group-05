@@ -46,7 +46,7 @@ latest_data = {
     "utci_values": [],
     "utci_values_flat": [],
     "heatmap_data": [],
-    "concept": "General courtyard design",
+    "heatmap_data_points": 0,
     "heatmap_analysis": {}
 }
 
@@ -614,44 +614,9 @@ def take_screenshot():
         print(f"❌ Error in take_screenshot: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/concept', methods=['GET', 'POST'])
-def handle_concept():
-    """Handle concept storage for heatmap analysis"""
-    global latest_data
-    
-    if request.method == 'POST':
-        try:
-            data = request.get_json()
-            concept = data.get('concept', 'General courtyard design')
-            
-            # Store the concept
-            latest_data['concept'] = concept
-            
-            print(f"Received concept from UI: {concept}")
-            
-            return jsonify({
-                'success': True,
-                'message': 'Concept stored successfully',
-                'concept': concept
-            })
-            
-        except Exception as e:
-            print(f"Error storing concept: {e}")
-            return jsonify({
-                'success': False,
-                'error': f'Failed to store concept: {str(e)}'
-            }), 500
-    
-    else:  # GET request
-        concept = latest_data.get('concept', 'No concept defined')
-        return jsonify({
-            'concept': concept,
-            'has_concept': bool(concept and concept != 'No concept defined')
-        })
-
 @app.route('/heatmap_analysis', methods=['GET', 'POST'])
 def handle_heatmap_analysis():
-    """Endpoint for analyzing heatmap data and providing activity recommendations"""
+    """Handle heatmap analysis data from Grasshopper and provide analysis results"""
     global latest_data
     
     if request.method == 'POST':
@@ -659,89 +624,103 @@ def handle_heatmap_analysis():
             data = request.get_json()
             heatmap_data = data.get('heatmap_data', [])
             
-            # Get concept from the UI (stored in latest_data) instead of from Grasshopper
-            concept = latest_data.get('concept', 'General courtyard design')
-            
-            # Validate heatmap data format
-            if not isinstance(heatmap_data, list):
-                return jsonify({
-                    'success': False, 
-                    'error': 'heatmap_data must be a list of [coordinate, utci_value] tuples'
-                }), 400
-            
-            # Validate each data point
-            validated_data = []
-            for i, point in enumerate(heatmap_data):
-                if not isinstance(point, (list, tuple)) or len(point) != 2:
-                    return jsonify({
-                        'success': False,
-                        'error': f'Invalid data point at index {i}. Expected [coordinate, utci_value]'
-                    }), 400
-                
-                coord, utci_value = point
-                try:
-                    # Ensure coordinates are numeric
-                    if isinstance(coord, (list, tuple)) and len(coord) >= 2:
-                        x, y = float(coord[0]), float(coord[1])
-                    else:
-                        x, y = float(coord), 0.0
-                    
-                    # Ensure UTCI value is numeric
-                    utci = float(utci_value)
-                    
-                    validated_data.append([[x, y], utci])
-                except (ValueError, TypeError) as e:
-                    return jsonify({
-                        'success': False,
-                        'error': f'Invalid numeric values at index {i}: {e}'
-                    }), 400
-            
             # Store the heatmap data
-            latest_data['heatmap_data'] = validated_data
+            latest_data['heatmap_data'] = heatmap_data
+            latest_data['heatmap_data_points'] = len(heatmap_data)
             
-            print(f"Received heatmap data: {len(validated_data)} points")
-            print(f"Using concept from UI: {concept}")
+            print(f"✅ Received heatmap data: {len(heatmap_data)} points")
             
-            # Analyze the heatmap data using the LLM function
-            try:
-                from llm_calls import analyze_heatmap_activities
-                analysis_result = analyze_heatmap_activities(concept, validated_data)
+            # Perform basic analysis
+            if heatmap_data:
+                # Extract UTCI values
+                utci_values = [point[1] for point in heatmap_data if len(point) >= 2]
                 
-                # Store the analysis result
-                latest_data['heatmap_analysis'] = analysis_result
-                
+                if utci_values:
+                    # Calculate statistics
+                    avg_utci = sum(utci_values) / len(utci_values)
+                    min_utci = min(utci_values)
+                    max_utci = max(utci_values)
+                    
+                    # Analyze thermal comfort zones
+                    comfortable_count = sum(1 for v in utci_values if 9 <= v <= 26)
+                    hot_count = sum(1 for v in utci_values if v > 26)
+                    cold_count = sum(1 for v in utci_values if v < 9)
+                    
+                    # Generate recommendations
+                    recommendations = []
+                    
+                    if hot_count > len(utci_values) * 0.3:  # More than 30% hot
+                        recommendations.append("🌳 Add more shade trees and vegetation")
+                        recommendations.append("💧 Consider water features for evaporative cooling")
+                        recommendations.append("🏗️ Optimize building orientation and add pergolas")
+                    
+                    if cold_count > len(utci_values) * 0.3:  # More than 30% cold
+                        recommendations.append("☀️ Add sun-exposed seating areas")
+                        recommendations.append("🏠 Consider wind protection structures")
+                        recommendations.append("🌿 Use evergreen trees for wind breaks")
+                    
+                    if comfortable_count < len(utci_values) * 0.5:  # Less than 50% comfortable
+                        recommendations.append("🌱 Improve overall thermal comfort with mixed landscaping")
+                        recommendations.append("🎨 Consider material choices for better thermal properties")
+                    
+                    # Store analysis results
+                    analysis_result = {
+                        "total_points": len(heatmap_data),
+                        "average_utci": round(avg_utci, 2),
+                        "min_utci": round(min_utci, 2),
+                        "max_utci": round(max_utci, 2),
+                        "comfortable_zones": comfortable_count,
+                        "hot_zones": hot_count,
+                        "cold_zones": cold_count,
+                        "comfort_percentage": round(comfortable_count / len(utci_values) * 100, 1),
+                        "recommendations": recommendations
+                    }
+                    
+                    latest_data['heatmap_analysis'] = analysis_result
+                    
+                    return jsonify({
+                        "success": True,
+                        "message": "Heatmap analysis completed successfully",
+                        "analysis": analysis_result
+                    })
+                else:
+                    return jsonify({
+                        "success": False,
+                        "error": "No valid UTCI values found in heatmap data"
+                    }), 400
+            else:
                 return jsonify({
-                    'success': True,
-                    'message': 'Heatmap analysis completed successfully',
-                    'analysis': analysis_result
-                })
-                
-            except Exception as e:
-                print(f"Error in heatmap analysis: {e}")
-                return jsonify({
-                    'success': False,
-                    'error': f'Analysis failed: {str(e)}'
-                }), 500
+                    "success": False,
+                    "error": "No heatmap data provided"
+                }), 400
                 
         except Exception as e:
-            print(f"Error processing heatmap data: {e}")
+            print(f"❌ Error processing heatmap analysis: {e}")
             return jsonify({
-                'success': False,
-                'error': f'Request processing failed: {str(e)}'
+                "success": False,
+                "error": f"Error processing heatmap data: {str(e)}"
             }), 500
     
-    else:  # GET request
-        # Return the latest analysis results
-        heatmap_data = latest_data.get('heatmap_data', [])
-        concept = latest_data.get('concept', 'No concept defined')
-        analysis = latest_data.get('heatmap_analysis', {})
-        
-        return jsonify({
-            'heatmap_data_points': len(heatmap_data),
-            'concept': concept,
-            'analysis': analysis,
-            'has_analysis': bool(analysis)
-        })
+    else:  # GET request from UI
+        try:
+            # Return the latest heatmap analysis results
+            heatmap_data = latest_data.get('heatmap_data', [])
+            analysis = latest_data.get('heatmap_analysis', {})
+            concept = getattr(FlaskClientChatUI, 'concept', 'No concept defined') if 'FlaskClientChatUI' in globals() else 'No concept defined'
+            
+            return jsonify({
+                "heatmap_data_points": len(heatmap_data),
+                "concept": concept,
+                "analysis": analysis,
+                "has_analysis": bool(analysis)
+            })
+            
+        except Exception as e:
+            print(f"❌ Error retrieving heatmap analysis: {e}")
+            return jsonify({
+                "success": False,
+                "error": f"Error retrieving heatmap analysis: {str(e)}"
+            }), 500
 
 def run_flask():
     app.run(debug=False, use_reloader=False)  # Run Flask server in a separate thread

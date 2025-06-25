@@ -11,10 +11,11 @@ A comprehensive AI-powered courtyard design system that combines conversational 
 - **Features**:
   - Multi-phase design workflow (concept → functions → attributes → graph → criticism)
   - Real-time chat interface with Captain CAT AI assistant
-  - Climate analysis integration
+  - Climate analysis integration with heatmap analysis
   - Image generation (concept and plan views)
   - Graph visualization and editing
   - Professional plan export
+  - Heatmap analysis for thermal comfort
 - **Key Classes**: `FlaskClientChatUI`, `ImageGenerationSignals`
 
 #### 2. **AI/LLM Integration** (`llm_calls.py`)
@@ -35,7 +36,8 @@ A comprehensive AI-powered courtyard design system that combines conversational 
   - Climate data processing
   - Graph data storage and retrieval
   - Screenshot capture for plan generation
-- **Endpoints**: `/plot_area`, `/utci_values`, `/climate_data`, `/graph_data`, etc.
+  - Heatmap analysis endpoint
+- **Endpoints**: `/plot_area`, `/utci_values`, `/climate_data`, `/graph_data`, `/heatmap_analysis`, etc.
 
 #### 4. **Graph Visualization** (`graph_gh.py`)
 - **Purpose**: Interactive graph editor for courtyard layout
@@ -45,6 +47,7 @@ A comprehensive AI-powered courtyard design system that combines conversational 
   - Real-time layout editing
   - Export to CSV for Grasshopper
   - Version control for design iterations
+  - Boundary box visualization
 - **Key Classes**: `MainWindow`, `GraphEditor`, `NodeItem`
 
 #### 5. **Professional Plan Export** (`plan_export.py`)
@@ -55,6 +58,7 @@ A comprehensive AI-powered courtyard design system that combines conversational 
   - Technical drawings with grid system
   - Material specifications and tree placement
   - Climate analysis integration
+  - Enhanced plan visualization
 - **Key Classes**: `PlanExportTab`, `ProfessionalPlanExporter`
 
 #### 6. **Climate Analysis** (`epw_analysis.py`, `epw_handler.py`)
@@ -65,6 +69,7 @@ A comprehensive AI-powered courtyard design system that combines conversational 
   - UTCI (Universal Thermal Climate Index) analysis
   - Time-based climate queries
   - Integration with Grasshopper for thermal analysis
+  - Heatmap data processing
 - **Key Functions**: `handle_zip_request`, `get_hoys_from_intent`, `load_epw_dataframe`
 
 #### 7. **Image Generation** (`image_gen.py`)
@@ -74,6 +79,7 @@ A comprehensive AI-powered courtyard design system that combines conversational 
   - Image-to-image plan enhancement
   - Architectural visualization with LoRA weights
   - Integration with external AI servers
+  - Enhanced plan view generation
 - **Key Functions**: `generate_ai_enhanced_image`, `generate_concept_view_from_text`
 
 #### 8. **Graph Query System** (`graph_query.py`)
@@ -121,6 +127,15 @@ pip install -r requirements.txt
 - `cat_icon.png`: Application icon (2.2MB)
 - `knowledge/merged.json`: Knowledge base for RAG queries (66MB)
 
+### Environment Setup
+Create a `server/keys.py` file with your API keys:
+```python
+OPENAI_API_KEY = "your_openai_api_key_here"
+NEO4J_URI = "your_neo4j_uri_here"
+NEO4J_USER = "your_neo4j_username"
+NEO4J_PASSWORD = "your_neo4j_password"
+```
+
 ### Starting the System
 
 1. **Start the Flask Server**:
@@ -150,8 +165,9 @@ pip install -r requirements.txt
 ### 2. Analysis Phase
 1. **Climate Analysis**: Select location and analyze weather data
 2. **UTCI Analysis**: Calculate thermal comfort with/without trees
-3. **Graph Queries**: Ask questions about design data
-4. **Image Generation**: Create concept and plan visualizations
+3. **Heatmap Analysis**: Analyze thermal comfort across the courtyard
+4. **Graph Queries**: Ask questions about design data
+5. **Image Generation**: Create concept and plan visualizations
 
 ### 3. Export Phase
 1. **Professional Plans**: Generate PDF documentation
@@ -166,9 +182,10 @@ pip install -r requirements.txt
 - **Climate Data**: Weather information for analysis
 - **Graph Data**: Spatial relationships and layout
 - **Screenshots**: Plan view capture and enhancement
+- **Heatmap Data**: Thermal comfort analysis for 3D visualization
 
 ### External Services
-- **AI Image Generation**: Text-to-image and image-to-image
+- **AI Image Generation**: Text-to-image and image-to-image via ngrok endpoints
 - **Weather Data**: EPW file retrieval and processing
 - **Neo4j Database**: Graph data storage and querying
 
@@ -198,91 +215,70 @@ aia25-studio-agent/
 ├── Server Configuration
 │   └── server/
 │       ├── config.py           # Server configuration
-│       └── keys.py             # API keys
+│       └── keys.py             # API keys (create this file)
 │
 ├── Knowledge Base
 │   └── knowledge/
-│       ├── merged.json         # RAG knowledge base
-│       └── epw_index.json      # Weather data index
+│       └── merged.json         # RAG knowledge base
 │
 ├── Assets
 │   ├── cat_icon.png            # Application icon
-│   └── workflow_graph.png      # System workflow diagram
+│   └── workflow_graph.png      # Workflow diagram
 │
 └── Documentation
     ├── README.md               # This file
-    ├── FALLBACK_SYSTEM_README.md
-    ├── CLIMATE_ANALYSIS_README.md
-    ├── GRAPH_QUERY_README.md
-    └── QUERY_TO_GRASSHOPPER_README.md
+    └── requirements.txt        # Python dependencies
 ```
 
-## 🗑️ Files That Can Be Deleted
+## 🆕 Recent Updates
 
-### Test and Demo Files
-- `test_fallback_system.py` - Test script for fallback system
-- `test_plot_area.py` - Test script for plot area functionality
-- `demo_plot_area.py` - Demonstration script for plot area system
-- `main.py` - Legacy command-line interface (superseded by UI)
+### Latest Features
+- **Heatmap Analysis**: Thermal comfort analysis across courtyard spaces
+- **Enhanced Plan Export**: Improved PDF generation with better formatting
+- **Image Generation**: Updated ngrok endpoints for AI image generation
+- **UI Improvements**: Better spacing and layout in plan export tab
+- **Robust Error Handling**: Enhanced fallback systems for better reliability
 
-### Temporary Files
-- `__pycache__/` directories - Python cache files
-- `.DS_Store` - macOS system file
-- `.gradio/` - Empty Gradio cache directory
-- `flagged/` - Empty flagged content directory
-- `lora_weights/placeholder.txt` - Placeholder file
+### Removed Features
+- **Minimal Data Button**: Removed "Send Minimal Data to Grasshopper" button for cleaner UI
 
-### Optional Utilities
-- `utils/ifc_data_prep.py` - IFC data processing (if not using IFC files)
-- `utils/ifc_file_processor.py` - IFC file processing (if not using IFC files)
-- `utils/building_csv_prep.py` - Building CSV preparation (if not using building data)
+## 🔧 Configuration
 
-## 🔑 Key Features
+### API Endpoints
+The system uses several external services:
+- **OpenAI API**: For LLM interactions
+- **Neo4j Database**: For graph data storage
+- **AI Image Generation**: Via ngrok endpoints
+- **Weather Data**: EPW file retrieval
 
-### AI-Powered Design Assistant
-- Conversational design process with Captain CAT
-- Context-aware tips and suggestions
-- Multi-phase design workflow
-- Real-time feedback and guidance
-
-### Climate-Responsive Design
-- Location-based weather analysis
-- UTCI thermal comfort calculations
-- Tree impact analysis
-- Seasonal climate considerations
-
-### Interactive Visualization
-- Graph-based spatial layout editor
-- Real-time design modifications
-- Professional plan generation
-- AI-enhanced image creation
-
-### Robust Error Handling
-- Fallback systems for LLM failures
-- Graceful degradation of functionality
-- Comprehensive error recovery
-- Safe data processing
-
-### Professional Output
-- Multi-page PDF documentation
-- Technical drawings with grid system
-- Material specifications
-- Climate analysis reports
+### Environment Variables
+Set up your environment variables in `server/keys.py`:
+```python
+OPENAI_API_KEY = "your_key_here"
+NEO4J_URI = "bolt://localhost:7687"
+NEO4J_USER = "neo4j"
+NEO4J_PASSWORD = "password"
+```
 
 ## 🤝 Contributing
 
-The system is designed with modularity in mind. Each component can be enhanced independently:
-
-- **UI Enhancements**: Modify `ui_pyqt.py` for new interface features
-- **AI Improvements**: Update `llm_calls.py` for better AI responses
-- **Climate Analysis**: Extend `epw_analysis.py` for additional weather metrics
-- **Graph Features**: Enhance `graph_gh.py` for new visualization capabilities
-- **Export Options**: Add new export formats in `plan_export.py`
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
 
 ## 📄 License
 
-This project is part of the AIA25 Studio Agent system for architectural design assistance.
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🆘 Support
+
+For support and questions:
+1. Check the documentation
+2. Review the code comments
+3. Open an issue on GitHub
 
 ---
 
-**Captain CAT - Courtyard Advisory Tool** - Making courtyard design accessible, intelligent, and climate-responsive.
+**Captain CAT** - Making courtyard design accessible and intelligent! 🏡🐱

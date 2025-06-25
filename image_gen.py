@@ -12,7 +12,7 @@ def generate_ai_enhanced_image(image_path, prompt, output_filename=None, design_
     """
     try:
         # Updated ngrok URL with the new server - using text-to-image endpoint
-        SERVER_URL = "https://7118-34-142-128-75.ngrok-free.app/generate"
+        SERVER_URL = "https://838e-34-126-162-220.ngrok-free.app/generate"
         
         # Generate detailed architectural description from design data
         detailed_prompt = generate_detailed_courtyard_prompt(prompt, design_data)
@@ -183,7 +183,7 @@ def generate_concept_view_from_text(prompt, output_filename=None):
     """
     try:
         # Use the /generate endpoint for concept images (text-to-image with LoRA)
-        SERVER_URL = "https://7118-34-142-128-75.ngrok-free.app/generate"
+        SERVER_URL = "https://838e-34-126-162-220.ngrok-free.app/generate"
         
         # Enhanced prompt for concept visualization with LoRA
         enhanced_prompt = f"{prompt}, architectural concept visualization, inspirational design, artistic rendering, high quality, detailed, photorealistic, enhanced lighting, improved materials, refined textures, creative courtyard environment, brown square building surrounding the courtyard, courtyard space inside the building perimeter"
@@ -236,7 +236,7 @@ def generate_plan_view_from_text(prompt, output_filename=None):
     """
     try:
         # Use the /generate-img2img endpoint for plan views (image-to-image with regular SDXL)
-        SERVER_URL = "https://7118-34-142-128-75.ngrok-free.app/generate-img2img"
+        SERVER_URL = "https://838e-34-126-162-220.ngrok-free.app/generate-img2img"
         
         # Enhanced prompt for plan visualization with coordinates and architectural precision
         enhanced_prompt = f"{prompt}, architectural plan view, technical drawing style, clean lines, professional layout, top-down perspective, precise measurements, clear zone boundaries, elegant spatial composition, coordinate system, realistic materials, professional architectural documentation, brown square building surrounding the courtyard, courtyard space inside the building perimeter"
@@ -336,7 +336,7 @@ def generate_plan_view_from_screenshot(screenshot_path, prompt, output_filename=
     """
     try:
         # Use the /generate-img2img endpoint for plan views (image-to-image with regular SDXL)
-        SERVER_URL = "https://7118-34-142-128-75.ngrok-free.app/generate-img2img"
+        SERVER_URL = "https://838e-34-126-162-220.ngrok-free.app/generate-img2img"
         
         # Enhanced prompt for plan visualization with coordinates and architectural precision
         enhanced_prompt = f"{prompt}, architectural plan view, technical drawing style, clean lines, professional layout, top-down perspective, precise measurements, clear zone boundaries, elegant spatial composition, coordinate system, realistic materials, professional architectural documentation, brown square building surrounding the courtyard, courtyard space inside the building perimeter"
@@ -487,7 +487,7 @@ def generate_detailed_plan_courtyard_prompt(concept, design_data, tree_data, att
 # Test function
 if __name__ == "__main__":
     # Test text-to-image generation with detailed architectural description
-    SERVER_URL = "https://c005-34-23-75-86.ngrok-free.app"
+    SERVER_URL = "https://838e-34-126-162-220.ngrok-free.app"
     
     # Sample design data for testing
     sample_design_data = {

@@ -40,12 +40,12 @@ class PlanExportTab:
         """Create the Plan Export tab for professional PDF export"""
         plan_export_widget = QWidget()
         layout = QVBoxLayout(plan_export_widget)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(15)
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(8)
 
         # Title
         title = QLabel("Export Professional Courtyard Plan")
-        title.setStyleSheet("font-size: 24px; font-weight: bold;")
+        title.setStyleSheet("font-size: 24px; font-weight: bold; margin-bottom: 5px;")
         layout.addWidget(title)
 
         # Description
@@ -54,19 +54,19 @@ class PlanExportTab:
             "The plan will include a site layout, materials, tree placement, and all design details."
         )
         description.setWordWrap(True)
-        description.setStyleSheet("font-size: 16px; margin-bottom: 15px;")
+        description.setStyleSheet("font-size: 16px; margin-bottom: 8px;")
         layout.addWidget(description)
 
         # Design summary area
         self.plan_summary_display = QTextBrowser()
         self.plan_summary_display.setPlaceholderText("Design summary will appear here once your design is ready.")
-        self.plan_summary_display.setFixedHeight(180)
+        self.plan_summary_display.setFixedHeight(160)
         self.plan_summary_display.setStyleSheet("""
             QTextBrowser {
                 background-color: #f0f0f0;
                 border: 1px solid #E0E0E0;
                 border-radius: 8px;
-                padding: 10px;
+                padding: 8px;
                 font-size: 15px;
             }
         """)
@@ -80,9 +80,10 @@ class PlanExportTab:
                 color: white;
                 border: none;
                 border-radius: 4px;
-                padding: 10px 25px;
+                padding: 12px 25px;
                 font-weight: bold;
                 font-size: 20px;
+                margin: 5px 0;
             }
             QPushButton:hover {
                 background-color: #E64A19;
@@ -97,13 +98,13 @@ class PlanExportTab:
         # Status display
         self.plan_export_status = QTextBrowser()
         self.plan_export_status.setPlaceholderText("Status updates will appear here...")
-        self.plan_export_status.setFixedHeight(100)
+        self.plan_export_status.setFixedHeight(80)
         self.plan_export_status.setStyleSheet("""
             QTextBrowser {
                 background-color: #f0f0f0;
                 border: 1px solid #E0E0E0;
                 border-radius: 8px;
-                padding: 10px;
+                padding: 8px;
                 font-size: 15px;
             }
         """)

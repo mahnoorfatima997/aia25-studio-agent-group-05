@@ -171,11 +171,11 @@ class FlaskClientChatUI(QMainWindow):
         # Create the image generation tab
         self.create_image_generation_tab()
 
-        # Create the plan export tab using the PlanExportTab class
-        self.plan_export_tab = PlanExportTab(self.tab_widget, self)
-
         # Create the climate analysis tab
         self.create_climate_analysis_tab()
+
+        # Create the plan export tab using the PlanExportTab class (moved to end)
+        self.plan_export_tab = PlanExportTab(self.tab_widget, self)
 
         # Initialize other properties
         self.phases = {
@@ -2673,27 +2673,8 @@ class FlaskClientChatUI(QMainWindow):
         self.current_location = None
 
         # Add after custom analysis section in create_climate_analysis_tab
-        self.send_minimal_btn = QPushButton("Send Minimal Data to Grasshopper")
-        self.send_minimal_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #607D8B;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 10px 20px;
-                font-weight: bold;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background-color: #455A64;
-            }
-            QPushButton:pressed {
-                background-color: #263238;
-            }
-        """)
-        self.send_minimal_btn.setEnabled(False)
-        self.send_minimal_btn.clicked.connect(self.send_minimal_data_to_grasshopper)
-        analysis_layout.addWidget(self.send_minimal_btn)
+        # Removed: self.send_minimal_btn = QPushButton("Send Minimal Data to Grasshopper")
+        # Removed: Button styling, connection, and layout addition
 
     def find_location_data(self):
         """Find weather data for the entered location."""
@@ -3156,58 +3137,12 @@ class FlaskClientChatUI(QMainWindow):
         threading.Thread(target=analysis_task).start()
 
     def update_climate_results(self, results):
-        """Update the climate analysis results display"""
+        """Update the climate results display."""
         self.climate_results.setHtml(results)
 
     def send_minimal_data_to_grasshopper(self):
-        """Send only location, query, epw_url, and timestamp to the server for Grasshopper."""
-        if not self.current_zip_url or not self.current_location:
-            self.climate_results.setHtml("""
-                <div style='text-align: center; color: #c62828; padding: 20px;'>
-                    <h3>⚠️ Please enter a location and find weather data first.</h3>
-                </div>
-            """)
-            return
-        query = self.custom_query_input.text().strip() or "No query provided"
-        minimal_data = {
-            "location": self.current_location,
-            "query": query,
-            "analysis_type": "minimal",
-            "is_single_hour": False,
-            "hour_of_day": -1,
-            "day_of_year": -1,
-            "hour_of_year": -1,
-            "temperature": 0.0,
-            "humidity": 0.0,
-            "epw_url": self.current_zip_url,
-            "timestamp": str(datetime.now())
-        }
-        try:
-            headers = {'Content-Type': 'application/json'}
-            response = requests.post(
-                "http://127.0.0.1:5000/climate_data",
-                json={"climate_data": minimal_data},
-                headers=headers,
-                timeout=10
-            )
-            if response.status_code == 200:
-                self.climate_results.setHtml("""
-                    <div style='text-align: center; color: #2e7d32; padding: 20px;'>
-                        <h3>✅ Minimal data sent to Grasshopper successfully!</h3>
-                    </div>
-                """)
-            else:
-                self.climate_results.setHtml(f"""
-                    <div style='text-align: center; color: #c62828; padding: 20px;'>
-                        <h3>❌ Failed to send minimal data (Status: {response.status_code})</h3>
-                    </div>
-                """)
-        except Exception as e:
-            self.climate_results.setHtml(f"""
-                <div style='text-align: center; color: #c62828; padding: 20px;'>
-                    <h3>❌ Error sending minimal data: {str(e)}</h3>
-                </div>
-            """)
+        # This function has been removed - no longer needed
+        pass
 
     def update_days_for_month(self):
         """Update the days dropdown based on the selected month."""
@@ -3767,15 +3702,27 @@ class FlaskClientChatUI(QMainWindow):
     def display_heatmap_analysis(self, analysis, concept, heatmap_points):
         """Display heatmap analysis results in the climate results panel"""
         try:
-            # Extract analysis components
-            thermal_analysis = analysis.get("thermal_analysis", {})
-            activity_recommendations = analysis.get("activity_recommendations", {})
-            design_recommendations = analysis.get("design_recommendations", {})
-            placement_guidance = analysis.get("placement_guidance", {})
+            # Extract analysis components from the actual server response format
+            total_points = analysis.get("total_points", 0)
+            average_utci = analysis.get("average_utci", 0)
+            min_utci = analysis.get("min_utci", 0)
+            max_utci = analysis.get("max_utci", 0)
+            comfortable_zones = analysis.get("comfortable_zones", 0)
+            hot_zones = analysis.get("hot_zones", 0)
+            cold_zones = analysis.get("cold_zones", 0)
+            comfort_percentage = analysis.get("comfort_percentage", 0)
+            recommendations = analysis.get("recommendations", [])
             
-            # Get thermal zone distribution
-            zone_distribution = thermal_analysis.get("zone_distribution", {})
-            utci_range = thermal_analysis.get("utci_range", {"min": 0, "max": 0})
+            # Calculate percentages for display
+            total_analyzed = comfortable_zones + hot_zones + cold_zones
+            comfortable_percentage = (comfortable_zones / total_analyzed * 100) if total_analyzed > 0 else 0
+            hot_percentage = (hot_zones / total_analyzed * 100) if total_analyzed > 0 else 0
+            cold_percentage = (cold_zones / total_analyzed * 100) if total_analyzed > 0 else 0
+            
+            # Debug: Print the actual values
+            print(f"DEBUG: comfort_percentage = {comfort_percentage}")
+            print(f"DEBUG: average_utci = {average_utci}")
+            print(f"DEBUG: comfortable_percentage = {comfortable_percentage}")
             
             # Create heatmap analysis display
             heatmap_html = f"""
@@ -3783,7 +3730,8 @@ class FlaskClientChatUI(QMainWindow):
                 <h3 style='font-size: 28px; margin-bottom: 20px; font-weight: bold;'>🗺️ Heatmap Activity Analysis</h3>
                 <div style='background-color: white; padding: 25px; border-radius: 8px; margin: 15px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
                     <p style='font-size: 18px; margin: 12px 0;'><strong>Data Points Analyzed:</strong> {heatmap_points}</p>
-                    <p style='font-size: 18px; margin: 12px 0;'><strong>UTCI Range:</strong> {utci_range.get('min', 0):.1f}°C to {utci_range.get('max', 0):.1f}°C</p>
+                    <p style='font-size: 18px; margin: 12px 0;'><strong>UTCI Range:</strong> {min_utci:.1f}°C to {max_utci:.1f}°C</p>
+                    <p style='font-size: 18px; margin: 12px 0;'><strong>Average UTCI:</strong> {average_utci:.1f}°C</p>
                     
                     <div style='margin: 25px 0;'>
                         <h4 style='font-size: 24px; margin-bottom: 20px; font-weight: bold;'>🌡️ Thermal Zone Distribution</h4>
@@ -3797,186 +3745,74 @@ class FlaskClientChatUI(QMainWindow):
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td style='padding: 15px; border: 2px solid #dee2e6; font-weight: bold;'>Comfortable</td>
-                                    <td style='padding: 15px; text-align: center; border: 2px solid #dee2e6; font-size: 20px;'>{zone_distribution.get('comfortable', {}).get('percentage', 0):.1f}%</td>
-                                    <td style='padding: 15px; text-align: center; border: 2px solid #dee2e6;'>{zone_distribution.get('comfortable', {}).get('count', 0)}</td>
+                                    <td style='padding: 15px; border: 2px solid #dee2e6; font-weight: bold;'>Comfortable (9-26°C)</td>
+                                    <td style='padding: 15px; text-align: center; border: 2px solid #dee2e6; font-size: 20px;'>{comfortable_percentage:.1f}%</td>
+                                    <td style='padding: 15px; text-align: center; border: 2px solid #dee2e6;'>{comfortable_zones}</td>
                                 </tr>
                                 <tr>
-                                    <td style='padding: 15px; border: 2px solid #dee2e6; font-weight: bold;'>Heat Stress</td>
-                                    <td style='padding: 15px; text-align: center; border: 2px solid #dee2e6; font-size: 20px;'>{zone_distribution.get('heat_stress', {}).get('percentage', 0):.1f}%</td>
-                                    <td style='padding: 15px; text-align: center; border: 2px solid #dee2e6;'>{zone_distribution.get('heat_stress', {}).get('count', 0)}</td>
+                                    <td style='padding: 15px; border: 2px solid #dee2e6; font-weight: bold;'>Heat Stress (>26°C)</td>
+                                    <td style='padding: 15px; text-align: center; border: 2px solid #dee2e6; font-size: 20px;'>{hot_percentage:.1f}%</td>
+                                    <td style='padding: 15px; text-align: center; border: 2px solid #dee2e6;'>{hot_zones}</td>
                                 </tr>
                                 <tr>
-                                    <td style='padding: 15px; border: 2px solid #dee2e6; font-weight: bold;'>Cold Stress</td>
-                                    <td style='padding: 15px; text-align: center; border: 2px solid #dee2e6; font-size: 20px;'>{zone_distribution.get('cold_stress', {}).get('percentage', 0):.1f}%</td>
-                                    <td style='padding: 15px; text-align: center; border: 2px solid #dee2e6;'>{zone_distribution.get('cold_stress', {}).get('count', 0)}</td>
+                                    <td style='padding: 15px; border: 2px solid #dee2e6; font-weight: bold;'>Cold Stress (<9°C)</td>
+                                    <td style='padding: 15px; text-align: center; border: 2px solid #dee2e6; font-size: 20px;'>{cold_percentage:.1f}%</td>
+                                    <td style='padding: 15px; text-align: center; border: 2px solid #dee2e6;'>{cold_zones}</td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
                     
                     <div style='margin: 25px 0;'>
-                        <h4 style='font-size: 24px; margin-bottom: 20px; font-weight: bold;'>🎯 Activity Recommendations by Thermal Zone</h4>
-                        <table style='width: 100%; border-collapse: collapse; font-size: 18px;'>
-                            <thead>
-                                <tr style='background-color: #f8f9fa;'>
-                                    <th style='padding: 15px; text-align: left; border: 2px solid #dee2e6; font-weight: bold;'>Thermal Zone</th>
-                                    <th style='padding: 15px; text-align: left; border: 2px solid #dee2e6; font-weight: bold;'>Recommended Activities</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-            """
-            
-            # Add comfortable activities
-            comfortable_activities = activity_recommendations.get("comfortable_activities", [])
-            if comfortable_activities:
-                heatmap_html += f"""
-                                <tr>
-                                    <td style='padding: 15px; border: 2px solid #dee2e6; font-weight: bold;'>Comfortable</td>
-                                    <td style='padding: 15px; border: 2px solid #dee2e6;'>
-                                        <ul style='margin: 0; padding-left: 20px;'>
-                """
-                for activity in comfortable_activities:
-                    heatmap_html += f"<li style='margin: 8px 0; font-size: 18px;'>{activity}</li>"
-                heatmap_html += """
-                                        </ul>
-                                    </td>
-                                </tr>
-                """
-            
-            # Add heat stress activities
-            heat_stress_activities = activity_recommendations.get("heat_stress_activities", [])
-            if heat_stress_activities:
-                heatmap_html += f"""
-                                <tr>
-                                    <td style='padding: 15px; border: 2px solid #dee2e6; font-weight: bold;'>Heat Stress</td>
-                                    <td style='padding: 15px; border: 2px solid #dee2e6;'>
-                                        <ul style='margin: 0; padding-left: 20px;'>
-                """
-                for activity in heat_stress_activities:
-                    heatmap_html += f"<li style='margin: 8px 0; font-size: 18px;'>{activity}</li>"
-                heatmap_html += """
-                                        </ul>
-                                    </td>
-                                </tr>
-                """
-            
-            # Add cold stress activities
-            cold_stress_activities = activity_recommendations.get("cold_stress_activities", [])
-            if cold_stress_activities:
-                heatmap_html += f"""
-                                <tr>
-                                    <td style='padding: 15px; border: 2px solid #dee2e6; font-weight: bold;'>Cold Stress</td>
-                                    <td style='padding: 15px; border: 2px solid #dee2e6;'>
-                                        <ul style='margin: 0; padding-left: 20px;'>
-                """
-                for activity in cold_stress_activities:
-                    heatmap_html += f"<li style='margin: 8px 0; font-size: 18px;'>{activity}</li>"
-                heatmap_html += """
-                                        </ul>
-                                    </td>
-                                </tr>
-                """
-            
-            heatmap_html += """
-                            </tbody>
-                        </table>
-                    </div>
-                    
-                    <div style='margin: 25px 0;'>
-                        <h4 style='font-size: 24px; margin-bottom: 20px; font-weight: bold;'>🏗️ Design Strategies for Thermal Improvement</h4>
-                        <table style='width: 100%; border-collapse: collapse; font-size: 18px;'>
-                            <thead>
-                                <tr style='background-color: #f8f9fa;'>
-                                    <th style='padding: 15px; text-align: left; border: 2px solid #dee2e6; font-weight: bold;'>Strategy Type</th>
-                                    <th style='padding: 15px; text-align: left; border: 2px solid #dee2e6; font-weight: bold;'>Recommendations</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-            """
-            
-            # Add shade improvements
-            shade_improvements = design_recommendations.get("shade_improvements", [])
-            if shade_improvements:
-                heatmap_html += f"""
-                                <tr>
-                                    <td style='padding: 15px; border: 2px solid #dee2e6; font-weight: bold;'>Shade Improvements</td>
-                                    <td style='padding: 15px; border: 2px solid #dee2e6;'>
-                                        <ul style='margin: 0; padding-left: 20px;'>
-                """
-                for improvement in shade_improvements:
-                    heatmap_html += f"<li style='margin: 8px 0; font-size: 18px;'>{improvement}</li>"
-                heatmap_html += """
-                                        </ul>
-                                    </td>
-                                </tr>
-                """
-            
-            # Add cooling strategies
-            cooling_strategies = design_recommendations.get("cooling_strategies", [])
-            if cooling_strategies:
-                heatmap_html += f"""
-                                <tr>
-                                    <td style='padding: 15px; border: 2px solid #dee2e6; font-weight: bold;'>Cooling Strategies</td>
-                                    <td style='padding: 15px; border: 2px solid #dee2e6;'>
-                                        <ul style='margin: 0; padding-left: 20px;'>
-                """
-                for strategy in cooling_strategies:
-                    heatmap_html += f"<li style='margin: 8px 0; font-size: 18px;'>{strategy}</li>"
-                heatmap_html += """
-                                        </ul>
-                                    </td>
-                                </tr>
-                """
-            
-            # Add heating strategies
-            heating_strategies = design_recommendations.get("heating_strategies", [])
-            if heating_strategies:
-                heatmap_html += f"""
-                                <tr>
-                                    <td style='padding: 15px; border: 2px solid #dee2e6; font-weight: bold;'>Heating Strategies</td>
-                                    <td style='padding: 15px; border: 2px solid #dee2e6;'>
-                                        <ul style='margin: 0; padding-left: 20px;'>
-                """
-                for strategy in heating_strategies:
-                    heatmap_html += f"<li style='margin: 8px 0; font-size: 18px;'>{strategy}</li>"
-                heatmap_html += """
-                                        </ul>
-                                    </td>
-                                </tr>
-                """
-            
-            heatmap_html += """
-                            </tbody>
-                        </table>
-                    </div>
-                    
-                    <div style='margin: 25px 0;'>
-                        <h4 style='font-size: 24px; margin-bottom: 20px; font-weight: bold;'>📋 Implementation Strategy</h4>
+                        <h4 style='font-size: 24px; margin-bottom: 20px; font-weight: bold;'>🎯 Design Recommendations</h4>
                         <div style='background-color: #f8f9fa; padding: 20px; border-radius: 6px; border-left: 4px solid #007bff;'>
-                            <h5 style='font-size: 20px; margin-bottom: 15px; font-weight: bold;'>How to Incorporate These Strategies:</h5>
+                            <h5 style='font-size: 20px; margin-bottom: 15px; font-weight: bold;'>Based on your thermal analysis:</h5>
                             <ul style='margin: 0; padding-left: 20px; font-size: 18px;'>
-                                <li style='margin: 10px 0;'>Prioritize high-impact areas based on thermal stress percentages</li>
-                                <li style='margin: 10px 0;'>Focus on zones with the highest heat stress for immediate cooling interventions</li>
-                                <li style='margin: 10px 0;'>Use comfortable zones as activity anchors for the most frequent use</li>
-                                <li style='margin: 10px 0;'>Implement shade strategies in areas with high solar exposure</li>
-                                <li style='margin: 10px 0;'>Add water features in heat stress zones for evaporative cooling</li>
-                                <li style='margin: 10px 0;'>Consider seasonal adjustments for optimal thermal comfort year-round</li>
+            """
+            
+            # Add recommendations
+            if recommendations:
+                for recommendation in recommendations:
+                    heatmap_html += f"<li style='margin: 10px 0;'>{recommendation}</li>"
+            else:
+                heatmap_html += """
+                                <li style='margin: 10px 0;'>🌱 Consider adding more vegetation for better thermal comfort</li>
+                                <li style='margin: 10px 0;'>💧 Add water features for evaporative cooling</li>
+                                <li style='margin: 10px 0;'>🏗️ Optimize building orientation and add shade structures</li>
+                """
+            
+            heatmap_html += f"""
                             </ul>
                         </div>
                     </div>
                     
                     <div style='margin: 25px 0;'>
-                        <h4 style='font-size: 24px; margin-bottom: 20px; font-weight: bold;'>📍 Activity Zone Assignment</h4>
+                        <h4 style='font-size: 24px; margin-bottom: 20px; font-weight: bold;'>📋 Activity Zone Guidelines</h4>
                         <div style='background-color: #f8f9fa; padding: 20px; border-radius: 6px; border-left: 4px solid #28a745;'>
                             <h5 style='font-size: 20px; margin-bottom: 15px; font-weight: bold;'>Optimal Activity Placement:</h5>
                             <ul style='margin: 0; padding-left: 20px; font-size: 18px;'>
-                                <li style='margin: 10px 0;'>Assign high-activity functions to comfortable thermal zones</li>
-                                <li style='margin: 10px 0;'>Use heat stress areas for water-based activities and shade structures</li>
-                                <li style='margin: 10px 0;'>Place seating and relaxation areas in zones with moderate temperatures</li>
-                                <li style='margin: 10px 0;'>Consider time-of-day usage patterns when assigning activities</li>
-                                <li style='margin: 10px 0;'>Create flexible spaces that can adapt to changing thermal conditions</li>
+                                <li style='margin: 10px 0;'>🎯 Place high-activity functions in comfortable thermal zones ({comfortable_percentage:.1f}% of your space)</li>
+                                <li style='margin: 10px 0;'>🌳 Use heat stress areas for water features and shade structures</li>
+                                <li style='margin: 10px 0;'>☀️ Place seating and relaxation areas in zones with moderate temperatures</li>
+                                <li style='margin: 10px 0;'>🕐 Consider time-of-day usage patterns when assigning activities</li>
+                                <li style='margin: 10px 0;'>🔄 Create flexible spaces that can adapt to changing thermal conditions</li>
                             </ul>
+                        </div>
+                    </div>
+                    
+                    <div style='margin: 25px 0;'>
+                        <h4 style='font-size: 24px; margin-bottom: 20px; font-weight: bold;'>📊 Analysis Summary</h4>
+                        <div style='display: grid; grid-template-columns: 1fr 1fr; gap: 20px;'>
+                            <div style='background-color: #e3f2fd; padding: 20px; border-radius: 6px; text-align: center;'>
+                                <h5 style='font-size: 18px; margin-bottom: 10px; font-weight: bold;'>Overall Comfort</h5>
+                                <p style='font-size: 24px; font-weight: bold; color: #1976d2;'>{comfort_percentage:.1f}%</p>
+                                <p style='font-size: 14px; color: #666;'>of space is thermally comfortable</p>
+                            </div>
+                            <div style='background-color: #fff3e0; padding: 20px; border-radius: 6px; text-align: center;'>
+                                <h5 style='font-size: 18px; margin-bottom: 10px; font-weight: bold;'>Average Temperature</h5>
+                                <p style='font-size: 24px; font-weight: bold; color: #f57c00;'>{average_utci:.1f}°C</p>
+                                <p style='font-size: 14px; color: #666;'>UTCI across all points</p>
+                            </div>
                         </div>
                     </div>
                 </div>
